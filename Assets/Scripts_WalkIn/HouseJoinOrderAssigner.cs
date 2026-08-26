@@ -1,5 +1,4 @@
 using System.Collections;
-using System.Linq;
 using UnityEngine;
 using Fusion;
 using Fusion.Sockets;
@@ -29,7 +28,18 @@ public class HouseJoinOrderAssigner : MonoBehaviour, INetworkRunnerCallbacks
         }
 
         runner.AddCallbacks(this);
-        TryAssign(runner);
+
+        // Keep retrying every frame until assignment succeeds. A single attempt
+        // right after IsRunning becomes true can fire before LocalPlayer.IsRealPlayer
+        // flips true, and with no retry that meant this client's house index was
+        // never assigned at all (SceneSelection.ApplyType/PersonalSpaceGate.BeginGating
+        // never ran for it) -- previously observed as "second computer's second
+        // avatar's house never configured".
+        while (!assigned)
+        {
+            TryAssign(runner);
+            yield return null;
+        }
     }
 
     void TryAssign(NetworkRunner runner)
@@ -37,9 +47,20 @@ public class HouseJoinOrderAssigner : MonoBehaviour, INetworkRunnerCallbacks
         if (assigned || runner == null || !runner.IsRunning) return;
         if (!runner.LocalPlayer.IsRealPlayer) return;
 
-        var sorted = runner.ActivePlayers.OrderBy(p => p.PlayerId).ToList();
-        int idx = sorted.IndexOf(runner.LocalPlayer);
-        if (idx < 0) return;
+        // Use Fusion's own network-authoritative PlayerId directly as the house
+        // index, NOT this client's locally-observed position within
+        // runner.ActivePlayers. That position depends on which peers THIS client
+        // happens to have heard about by the time it computes it -- two clients
+        // (or even the same client at two different moments) can see different
+        // ActivePlayers snapshots while a session is still connecting, so ranking
+        // within that snapshot previously produced a DIFFERENT house index for
+        // the same physical player depending on which machine asked (observed:
+        // the first-joined computer showed itself as house0 locally, but a
+        // second computer saw that same player as house1). PlayerId is assigned
+        // once by the server in join order and is identical everywhere the
+        // instant any client learns a player exists at all, so indexing by it
+        // directly removes the race entirely.
+        int idx = runner.LocalPlayer.PlayerId;
 
         if (idx > 2)
         {
