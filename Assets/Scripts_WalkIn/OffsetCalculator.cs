@@ -91,6 +91,15 @@ public class OffsetCalculator : MonoBehaviour
         offsetsCalculated = false;
     }
 
+    // Called by HouseJoinOrderAssigner once join order is known, since Start() above
+    // runs (and caches id from the still-default chooseHouseNum) before the Fusion
+    // connection completes.
+    public void SetId(int newId)
+    {
+        id = newId;
+        Debug.Log($"[OffsetCalculator] id set to {id} via join-order assignment");
+    }
+
     /// <summary>
     /// Get the remote avatar indices based on local id
     /// RemoteAvatar1 = first to connect (gets "1" suffix in updateavatar)
