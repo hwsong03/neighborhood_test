@@ -100,3 +100,11 @@ InitTestScene*.unity*
 
 # Oculus Avatar2 Sample Preset zip files (too large)
 Assets/Oculus/Avatar2_SampleAssets/**/*.zip
+
+# Local-only assets (not tracked)
+/Assets/Samples/Meta Avatars SDK/38.0.0/Sample Scenes/Environments/NeutralRig/Directional_flipped.hdr
+/Assets/Samples/Meta Avatars SDK/38.0.0/Sample Scenes/Environments/NeutralRig/Directional_flipped.hdr.meta
+/Assets/Screenshots/
+/Assets/Screenshots.meta
+/Assets/revised/all_revised.fbx
+/Assets/revised/all_revised.fbx.meta
