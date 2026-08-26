@@ -64,13 +64,9 @@ public class Arrange_Walkin : MonoBehaviour
     void Awake()
     {
         // Runtime-attached (no scene wiring needed): derives our house index from
-        // Fusion join order, and hides other players' houses/avatars until Y-key
-        // optimization arranges everyone into their real relative positions.
+        // Fusion join order.
         var assigner = gameObject.AddComponent<HouseJoinOrderAssigner>();
         assigner.arrangeWalkin = this;
-
-        var gate = gameObject.AddComponent<PersonalSpaceGate>();
-        gate.arrangeWalkin = this;
     }
 
     void Start()
@@ -387,9 +383,6 @@ public class Arrange_Walkin : MonoBehaviour
             // each house's real scanned-room outline, kept alongside (not instead
             // of) the circles above -- see DrawHouseOutlines
             DrawHouseOutlines();
-
-            // Optimization is applied and everyone is in their real relative position now
-            PersonalSpaceGate.Instance?.Reveal();
 
 
             // propagate to clients

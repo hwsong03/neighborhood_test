@@ -7,6 +7,10 @@ using Fusion.Sockets;
 // pushes it into SceneSelection/Arrange_Walkin/Regions/OffsetCalculator.
 // Replaces the old workflow of hand-setting type/chooseHouseNum per machine,
 // which breaks the moment the same build/scene runs on every computer.
+// Houses/avatars are visible as soon as each player connects -- there is no
+// gating until the Y-key optimization runs; per the paper, individual areas
+// (ROI) and avatars are visible from Initialize, only the aligned Neighborhood
+// changes once Walking In mode starts.
 public class HouseJoinOrderAssigner : MonoBehaviour, INetworkRunnerCallbacks
 {
     public Arrange_Walkin arrangeWalkin;
@@ -32,9 +36,9 @@ public class HouseJoinOrderAssigner : MonoBehaviour, INetworkRunnerCallbacks
         // Keep retrying every frame until assignment succeeds. A single attempt
         // right after IsRunning becomes true can fire before LocalPlayer.IsRealPlayer
         // flips true, and with no retry that meant this client's house index was
-        // never assigned at all (SceneSelection.ApplyType/PersonalSpaceGate.BeginGating
-        // never ran for it) -- previously observed as "second computer's second
-        // avatar's house never configured".
+        // never assigned at all (SceneSelection.ApplyType never ran for it) --
+        // previously observed as "second computer's second avatar's house never
+        // configured".
         while (!assigned)
         {
             TryAssign(runner);
@@ -86,8 +90,6 @@ public class HouseJoinOrderAssigner : MonoBehaviour, INetworkRunnerCallbacks
 
         if (Regions.Instance != null) Regions.Instance.chooseHouseNum = idx;
         if (OffsetCalculator.Instance != null) OffsetCalculator.Instance.SetId(idx);
-
-        PersonalSpaceGate.Instance?.BeginGating();
 
         Debug.Log($"[HouseJoinOrderAssigner] Local player {runner.LocalPlayer} joined at position {idx} -> house{idx} (isServer={arrangeWalkin.isServer})");
     }
