@@ -236,9 +236,15 @@ public class Regions : MonoBehaviour
                 zone2Vec4[i] = new Vector4(selectedZones[2][i].x, selectedZones[2][i].y, selectedZones[2][i].z, 0);
             }
 
-            feedZone(myHouse, userPosVec4, 0, 0, ZoneMode.Local);
-            feedZone(otherHouse1, userPosVec4, 0, 1, ZoneMode.Remote);
-            feedZone(otherHouse2, userPosVec4, 0, 2, ZoneMode.Remote);
+            // Index into houses[] by chooseHouseNum directly instead of the
+            // myHouse/otherHouse1/otherHouse2 fields -- those are fixed to
+            // house_0/house_1/house_2 regardless of chooseHouseNum (leftover
+            // manual per-machine wiring), so a house1/house2 player's own real
+            // room was being marked Remote (clipped) while house_0 was wrongly
+            // marked Local for them. Only correct by coincidence for house0.
+            feedZone(houses[0], userPosVec4, 0, 0, ZoneMode.Local);
+            feedZone(houses[1], userPosVec4, 0, 1, ZoneMode.Remote);
+            feedZone(houses[2], userPosVec4, 0, 2, ZoneMode.Remote);
 
 
         }
@@ -259,10 +265,10 @@ public class Regions : MonoBehaviour
             //Debug.Log(userPosVec4[1]);
 
 
-            feedZone(myHouse, userPosVec4, 1, 1, ZoneMode.Local);
+            feedZone(houses[1], userPosVec4, 1, 1, ZoneMode.Local);
 
-            feedZone(otherHouse1, userPosVec4, 1, 0, ZoneMode.Remote);
-            feedZone(otherHouse2, userPosVec4, 1, 2, ZoneMode.Remote);
+            feedZone(houses[0], userPosVec4, 1, 0, ZoneMode.Remote);
+            feedZone(houses[2], userPosVec4, 1, 2, ZoneMode.Remote);
 
 
         }
@@ -282,9 +288,9 @@ public class Regions : MonoBehaviour
                 zone2Vec4[i] = new Vector4(selectedZones[1][i].x, selectedZones[1][i].y, selectedZones[1][i].z, 0);
             }
 
-            feedZone(myHouse, userPosVec4, 2, 2, ZoneMode.Local);
-            feedZone(otherHouse1, userPosVec4, 2, 0, ZoneMode.Remote);
-            feedZone(otherHouse2, userPosVec4, 2, 1, ZoneMode.Remote);
+            feedZone(houses[2], userPosVec4, 2, 2, ZoneMode.Local);
+            feedZone(houses[0], userPosVec4, 2, 0, ZoneMode.Remote);
+            feedZone(houses[1], userPosVec4, 2, 1, ZoneMode.Remote);
         }
         
 

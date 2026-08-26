@@ -64,7 +64,8 @@ public class Arrange_Walkin : MonoBehaviour
     void Awake()
     {
         // Runtime-attached (no scene wiring needed): derives our house index from
-        // Fusion join order.
+        // Fusion join order. Does not hide or change anything visually -- see
+        // HouseJoinOrderAssigner's own header comment.
         var assigner = gameObject.AddComponent<HouseJoinOrderAssigner>();
         assigner.arrangeWalkin = this;
     }

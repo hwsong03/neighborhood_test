@@ -7,10 +7,12 @@ using Fusion.Sockets;
 // pushes it into SceneSelection/Arrange_Walkin/Regions/OffsetCalculator.
 // Replaces the old workflow of hand-setting type/chooseHouseNum per machine,
 // which breaks the moment the same build/scene runs on every computer.
-// Houses/avatars are visible as soon as each player connects -- there is no
-// gating until the Y-key optimization runs; per the paper, individual areas
-// (ROI) and avatars are visible from Initialize, only the aligned Neighborhood
-// changes once Walking In mode starts.
+//
+// Does NOT hide or gate anything -- houses/avatars stay visible exactly as
+// before (full for my own house, clipped to the individual-area circle for
+// others, via Regions.cs's existing zone-clip shader feed). This component's
+// only job is making sure every client's chooseHouseNum agrees on who is
+// house0/1/2, consistently, by Fusion join order.
 public class HouseJoinOrderAssigner : MonoBehaviour, INetworkRunnerCallbacks
 {
     public Arrange_Walkin arrangeWalkin;
@@ -35,10 +37,8 @@ public class HouseJoinOrderAssigner : MonoBehaviour, INetworkRunnerCallbacks
 
         // Keep retrying every frame until assignment succeeds. A single attempt
         // right after IsRunning becomes true can fire before LocalPlayer.IsRealPlayer
-        // flips true, and with no retry that meant this client's house index was
-        // never assigned at all (SceneSelection.ApplyType never ran for it) --
-        // previously observed as "second computer's second avatar's house never
-        // configured".
+        // flips true, and with no retry this client's house index would never get
+        // assigned at all.
         while (!assigned)
         {
             TryAssign(runner);
@@ -51,25 +51,26 @@ public class HouseJoinOrderAssigner : MonoBehaviour, INetworkRunnerCallbacks
         if (assigned || runner == null || !runner.IsRunning) return;
         if (!runner.LocalPlayer.IsRealPlayer) return;
 
-        // Use Fusion's own network-authoritative PlayerId directly as the house
-        // index, NOT this client's locally-observed position within
-        // runner.ActivePlayers. That position depends on which peers THIS client
-        // happens to have heard about by the time it computes it -- two clients
-        // (or even the same client at two different moments) can see different
-        // ActivePlayers snapshots while a session is still connecting, so ranking
-        // within that snapshot previously produced a DIFFERENT house index for
-        // the same physical player depending on which machine asked (observed:
-        // the first-joined computer showed itself as house0 locally, but a
-        // second computer saw that same player as house1). PlayerId is assigned
-        // once by the server in join order and is identical everywhere the
-        // instant any client learns a player exists at all, so indexing by it
-        // directly removes the race entirely.
-        int idx = runner.LocalPlayer.PlayerId;
+        // This project runs Fusion in Shared Mode, where Photon's actor
+        // numbering starts at 1, not 0 -- confirmed live via debug log: a lone
+        // first-joined client got PlayerId==1 (and AsIndex==1, NOT 0 either;
+        // neither property is 0-based here). Subtract 1 to get a 0-based house
+        // index. PlayerId is assigned once by the server in join order and is
+        // identical everywhere the instant any client learns a player exists,
+        // so indexing by it (unlike ranking within this client's locally-observed
+        // runner.ActivePlayers snapshot, which can differ machine to machine
+        // while a session is still connecting) is race-free.
+        int idx = runner.LocalPlayer.PlayerId - 1;
 
         if (idx > 2)
         {
             Debug.LogWarning($"[HouseJoinOrderAssigner] Join position {idx} exceeds available houses (0-2); clamping to house2.");
             idx = 2;
+        }
+        if (idx < 0)
+        {
+            Debug.LogWarning($"[HouseJoinOrderAssigner] Computed negative join position {idx} (PlayerId={runner.LocalPlayer.PlayerId}); clamping to house0.");
+            idx = 0;
         }
 
         if (arrangeWalkin == null)
