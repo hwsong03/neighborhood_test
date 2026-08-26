@@ -2,6 +2,7 @@ using System.Collections;
 using System.Linq;
 using UnityEngine;
 using Fusion;
+using Fusion.Sockets;
 
 // Derives this client's house index (0/1/2) from Photon Fusion join order and
 // pushes it into SceneSelection/Arrange_Walkin/Regions/OffsetCalculator.
