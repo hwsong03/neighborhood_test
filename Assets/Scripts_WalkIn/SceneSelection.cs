@@ -120,22 +120,6 @@ public class SceneSelection : MonoBehaviour
             case 2: C = true; ChangeLayerRecursively(oveCamrig, 16); break;
         }
     }
-    // Re-runs Start()'s player-layer switch for a (network-assigned) house type.
-    // Called by HouseJoinOrderAssigner once join order is known, since Start()
-    // runs before the Fusion connection completes and can only use the default type.
-    public void ApplyType(int newType)
-    {
-        type = newType;
-        A = B = C = false;
-
-        GameObject oveCamrig = GameObject.FindFirstObjectByType<OVRCameraRig>().gameObject;
-        switch (type)
-        {
-            case 0: A = true; ChangeLayerRecursively(oveCamrig, 14); break;
-            case 1: B = true; ChangeLayerRecursively(oveCamrig, 15); break;
-            case 2: C = true; ChangeLayerRecursively(oveCamrig, 16); break;
-        }
-    }
 
     private void ChangeLayerRecursively(GameObject obj, int layer)
     {
