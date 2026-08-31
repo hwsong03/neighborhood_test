@@ -19,7 +19,13 @@ public static class AvatarJointHelper
     public static Transform FindJointChest(Transform avatarRoot)
     {
         if (avatarRoot == null) return null;
-        return FindChildByName(avatarRoot, JOINT_CHEST_NAME);
+        // Meta Avatar SDK builds its runtime skeleton with "Joint Chest" nested several
+        // levels below the entity root, not as a direct child -- FindChildByName (direct
+        // children only) was silently returning null here on every real avatar, which
+        // made every caller fall back to the avatar's raw root position instead (see
+        // e.g. LocalOptimizationRunner.BuildOptimizationInputs's own comment on why that
+        // fallback is wrong for ROI/boundary centering).
+        return FindChildByNameRecursive(avatarRoot, JOINT_CHEST_NAME);
     }
 
     /// <summary>
@@ -31,7 +37,8 @@ public static class AvatarJointHelper
     public static Transform FindJointHead(Transform avatarRoot)
     {
         if (avatarRoot == null) return null;
-        return FindChildByName(avatarRoot, JOINT_HEAD_NAME);
+        // Same reasoning as FindJointChest above -- "Joint Head" isn't a direct child either.
+        return FindChildByNameRecursive(avatarRoot, JOINT_HEAD_NAME);
     }
 
     /// <summary>

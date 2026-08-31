@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
 using NetTopologySuite.Geometries;
 using UnityEngine;
 
@@ -78,6 +80,12 @@ public class LocalOptimizationRunner : MonoBehaviour
         isRunning = true;
         try
         {
+            // Always re-read the live house index from SceneSelection right before a run --
+            // the Inspector field is only a fallback for solo testing without full scene
+            // wiring (see ResolveMyType). Every client must use ITS OWN correct index both
+            // for this local run and for applying results broadcast from other clients.
+            myType = ResolveMyType();
+
             Debug.Log("[LocalOptimizationRunner] Stage 1/6: resetting houses to origin...");
             ResetHousesToOrigin();
 
@@ -128,6 +136,14 @@ public class LocalOptimizationRunner : MonoBehaviour
             DrawBoundaryCirclesForMe(optResult, originalLocalCentroids); // bigger (1.2m) circle outline -- re-enabled per request
             DrawROICirclesForMe(optResult, originalLocalCentroids); // 개인 공간 원 outline -- re-enabled per request
             // DrawHouseOutlinesForMe(optResult, originalLocalCentroids);
+
+            // The DE search itself only ever runs HERE, on whichever computer pressed
+            // Z/trigger -- send the finished result to every other connected client so
+            // their houses/avatars/boundary+ROI circles end up in the identical
+            // arrangement, instead of each machine trying to (and never being asked to)
+            // run its own separate optimization.
+            Debug.Log("[LocalOptimizationRunner] Broadcasting optimization result to other clients...");
+            BroadcastOptimizationResult(optResult, originalLocalCentroids);
 
             Debug.Log("[LocalOptimizationRunner] Stage 6/6: done.");
         }
@@ -507,5 +523,221 @@ public class LocalOptimizationRunner : MonoBehaviour
         lr.widthMultiplier = width;
         lr.positionCount = points.Length;
         lr.SetPositions(points);
+    }
+
+    // ── 네트워크 동기화 (Z키 최적화 결과 브로드캐스트) ──────────────────────────
+    // 역할: DE 탐색(RunOptimizationAndApply)은 Z/trigger를 누른 컴퓨터에서만 수행하고,
+    //       그 최종 결과(house/avatar 배치, boundary/ROI 원)만 다른 모든 클라이언트로
+    //       전송해서 똑같이 적용한다. 각자 다시 최적화를 돌리게 하면, 아직 다른 집의
+    //       실시간 위치를 못 받아온 클라이언트는 입력 자체가 서로 달라 결과가 갈릴 수
+    //       있고, 랜덤 탐색이라 완전히 같은 결과가 보장되지도 않는다.
+    // 의존: TransferManager (Arrange_Walkin.transfer) 의 RPC_BroadcastZOptResult
+    // ─────────────────────────────────────────────────────────────────────────
+
+    const int NumMovingHouses = NumHouses - 1;
+
+    // originalLocalCentroids(하우스당 2) + freespace centroid(하우스당 2)
+    // + boundary(하우스당 3) + roi(하우스당 3) + moving-house 회전각(하우스-1개)
+    const int PayloadDoubleCount = NumHouses * 2 + NumHouses * 2 + NumHouses * 3 + NumHouses * 3 + NumMovingHouses;
+
+    /// <summary>
+    /// 방금 로컬에서 계산한 최적화 결과를 TransferManager를 통해 다른 모든 클라이언트에 전송합니다.
+    /// RunOptimizationAndApply()가 로컬 적용을 마친 직후 호출됩니다.
+    /// </summary>
+    void BroadcastOptimizationResult(DifferentialEvolutionOptimizer.Result optResult, CoordinateTransform.Point2D[] originalLocalCentroids)
+    {
+        if (arrangeWalkin == null || arrangeWalkin.transfer == null)
+        {
+            Debug.LogWarning("[LocalOptimizationRunner] No transfer(TransferManager) reference -- cannot broadcast optimization result to other clients.");
+            return;
+        }
+
+        var transferManager = arrangeWalkin.transfer.GetComponent<TransferManager>();
+        if (transferManager == null)
+        {
+            Debug.LogWarning("[LocalOptimizationRunner] transfer GameObject has no TransferManager component -- cannot broadcast.");
+            return;
+        }
+
+        // Solo testing (no Fusion session, or connected alone with nobody else to sync
+        // to) must NOT throw here -- the local result above is already fully applied
+        // regardless, so a skipped broadcast is not a functional loss, just a no-op.
+        // TransferManager.Object/Runner are null until the NetworkObject is actually
+        // spawned; calling an [Rpc] method before/without that would throw inside
+        // Fusion's own RPC dispatch, which (RunOptimizationAndApply being `async void`)
+        // would surface as an uncatchable top-level exception instead of a clean log line.
+        if (transferManager.Object == null || transferManager.Runner == null || !transferManager.Runner.IsRunning)
+        {
+            Debug.Log("[LocalOptimizationRunner] Not connected to a running Fusion session -- skipping network broadcast (solo/offline testing). Local result is already applied.");
+            return;
+        }
+
+        try
+        {
+            string payload = SerializeOptimizationResult(optResult, originalLocalCentroids);
+            transferManager.RPC_BroadcastZOptResult(payload);
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"[LocalOptimizationRunner] Failed to broadcast optimization result to other clients (local result is still applied): {e}");
+        }
+    }
+
+    // Result/originalLocalCentroids를 콤마로 구분된 double 목록 하나로 직렬화합니다.
+    // 순서는 ApplyReceivedOptimizationResult의 파싱 순서와 반드시 일치해야 합니다.
+    // 문화권(culture)에 따라 소수점 구분자가 달라질 수 있으므로 InvariantCulture 고정.
+    string SerializeOptimizationResult(DifferentialEvolutionOptimizer.Result optResult, CoordinateTransform.Point2D[] originalLocalCentroids)
+    {
+        var values = new double[PayloadDoubleCount];
+        int idx = 0;
+
+        for (int i = 0; i < NumHouses; i++)
+        {
+            values[idx++] = originalLocalCentroids[i].X;
+            values[idx++] = originalLocalCentroids[i].Y;
+        }
+        for (int i = 0; i < NumHouses; i++)
+        {
+            var c = optResult.FinalFreespaces[i].Centroid;
+            values[idx++] = c.X;
+            values[idx++] = c.Y;
+        }
+        for (int i = 0; i < NumHouses; i++)
+        {
+            values[idx++] = optResult.FinalBoundaries[i].CenterX;
+            values[idx++] = optResult.FinalBoundaries[i].CenterY;
+            values[idx++] = optResult.FinalBoundaries[i].Radius;
+        }
+        for (int i = 0; i < NumHouses; i++)
+        {
+            values[idx++] = optResult.FinalRois[i].CenterX;
+            values[idx++] = optResult.FinalRois[i].CenterY;
+            values[idx++] = optResult.FinalRois[i].Radius;
+        }
+        for (int i = 0; i < NumMovingHouses; i++)
+        {
+            values[idx++] = optResult.MovingStates[i].AngleDeg;
+        }
+
+        var parts = new string[values.Length];
+        for (int i = 0; i < values.Length; i++)
+            parts[i] = values[i].ToString("G17", CultureInfo.InvariantCulture);
+        return string.Join(",", parts);
+    }
+
+    /// <summary>
+    /// 다른 클라이언트가 브로드캐스트한 최적화 결과를 받아 이 클라이언트에도 똑같이 적용합니다.
+    /// TransferManager.RPC_SendZOptChunk가 모든 청크를 받으면 호출합니다.
+    /// FinalFreespaces는 이 경로 아래에서 오직 ".Centroid"로만 쓰이므로(CoordinateTransform.
+    /// GetAbsoluteFrames 참고), 실제 freespace 폴리곤 전체 대신 그 중심점 위에 만든 자리표시용
+    /// 원으로 대체합니다 -- 진짜 폴리곤 외곽선을 쓰는 유일한 소비자(DrawHouseOutlinesForMe)는
+    /// 현재 호출되지 않고 있습니다(RunOptimizationAndApply 참고).
+    /// </summary>
+    public void ApplyReceivedOptimizationResult(string payload)
+    {
+        if (isRunning)
+        {
+            Debug.LogWarning("[LocalOptimizationRunner] Received a synced optimization result while a local run is in progress -- ignoring to avoid a race.");
+            return;
+        }
+
+        isRunning = true;
+        try
+        {
+            myType = ResolveMyType();
+
+            double[] values;
+            try
+            {
+                values = payload.Split(',').Select(s => double.Parse(s, CultureInfo.InvariantCulture)).ToArray();
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"[LocalOptimizationRunner] Failed to parse received optimization payload: {e}");
+                return;
+            }
+
+            if (values.Length != PayloadDoubleCount)
+            {
+                Debug.LogError($"[LocalOptimizationRunner] Received optimization payload has {values.Length} values, expected {PayloadDoubleCount} -- ignoring.");
+                return;
+            }
+
+            int idx = 0;
+            var originalLocalCentroids = new CoordinateTransform.Point2D[NumHouses];
+            for (int i = 0; i < NumHouses; i++)
+                originalLocalCentroids[i] = new CoordinateTransform.Point2D(values[idx++], values[idx++]);
+
+            var freespaces = new Polygon[NumHouses];
+            for (int i = 0; i < NumHouses; i++)
+            {
+                double cx = values[idx++], cy = values[idx++];
+                freespaces[i] = PolygonUtils.CreateCircle(cx, cy, 1.2); // 자리표시용 -- 위 XML 주석 참고
+            }
+
+            var boundaries = new CircleShape[NumHouses];
+            for (int i = 0; i < NumHouses; i++)
+                boundaries[i] = new CircleShape(values[idx++], values[idx++], values[idx++]);
+
+            var rois = new CircleShape[NumHouses];
+            for (int i = 0; i < NumHouses; i++)
+                rois[i] = new CircleShape(values[idx++], values[idx++], values[idx++]);
+
+            var movingStates = new DifferentialEvolutionOptimizer.TransformState[NumMovingHouses];
+            for (int i = 0; i < NumMovingHouses; i++)
+                movingStates[i] = new DifferentialEvolutionOptimizer.TransformState { Dx = 0, Dy = 0, AngleDeg = values[idx++] };
+
+            var optResult = new DifferentialEvolutionOptimizer.Result
+            {
+                BestLoss = 0.0,
+                MovingStates = movingStates,
+                FinalFreespaces = freespaces,
+                FinalBoundaries = boundaries,
+                FinalRois = rois,
+                LossHistory = new List<double>()
+            };
+
+            Debug.Log("[LocalOptimizationRunner] Applying optimization result received from another client.");
+
+            ResetHousesToOrigin();
+            ApplyHousePlacements(optResult, originalLocalCentroids);
+            ApplyAvatarPositions(optResult, originalLocalCentroids);
+            BuildSelectedZones(optResult, originalLocalCentroids);
+            DrawBoundaryCirclesForMe(optResult, originalLocalCentroids);
+            DrawROICirclesForMe(optResult, originalLocalCentroids);
+            MarkTraverseZoneRan();
+        }
+        finally
+        {
+            isRunning = false;
+        }
+    }
+
+    // LocalROI.cs는 GameObject.Find("traverseZone")의 존재 여부를 "최적화가 한 번이라도
+    // 실행됐는가"의 유일한 신호로 사용합니다(LocalROI.cs 자체 주석 참고). 이 동기화 경로는
+    // 진짜 traverse-zone 외곽선을 계산할 freespace 폴리곤 원본이 없으므로(위 XML 주석 참고),
+    // 같은 이름의 마커 오브젝트만 남겨 그 신호를 동일하게 재현합니다 -- 어차피 실제 외곽선도
+    // 이 기능에서는 항상 invisible로 그려져(RunOptimizationAndApply의 visible:false) 지금까지
+    // 화면에 보인 적이 없습니다.
+    void MarkTraverseZoneRan()
+    {
+        foreach (GameObject obj in GameObject.FindObjectsOfType<GameObject>())
+        {
+            if (obj.name.Contains("traverseZone")) DestroyImmediate(obj);
+        }
+        new GameObject("traverseZone");
+    }
+
+    // 임시 Inspector 필드(myType) 대신, SceneSelection.type(Fusion join order로
+    // HouseJoinOrderAssigner가 한 번 정해줌)에서 이 클라이언트의 실제 house 번호를 읽습니다.
+    // arrangeWalkin/sceneSelection 참조가 없는 솔로 테스트 환경에서는 Inspector 값으로 폴백합니다.
+    int ResolveMyType()
+    {
+        if (arrangeWalkin != null && arrangeWalkin.sceneSelection != null)
+        {
+            var sceneSel = arrangeWalkin.sceneSelection.GetComponent<SceneSelection>();
+            if (sceneSel != null) return sceneSel.type;
+        }
+        return myType;
     }
 }

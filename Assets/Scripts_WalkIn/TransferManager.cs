@@ -315,6 +315,61 @@ public class TransferManager : NetworkBehaviour
         }
     }
 
+    // ── Z키 최적화 결과 동기화 ──────────────────────────────────────────────
+    // 역할: LocalOptimizationRunner(신규 C# 최적화 파이프라인, Z키/컨트롤러 트리거)의
+    //       결과를 모든 클라이언트에 전달합니다. 위 RPC_OptResultToClient/
+    //       RPC_SendOptChunk는 구 Y키/Python-JSON 파이프라인 전용이라 데이터 포맷이
+    //       전혀 달라 별도의 dictionary/RPC로 분리했습니다.
+    // 의존: LocalOptimizationRunner.ApplyReceivedOptimizationResult
+    // 참고: RpcSources.All이라 host(StateAuthority)가 아닌 클라이언트가 Z를 눌러도
+    //       그대로 전체에 브로드캐스트됩니다 -- 위 Y키 경로가 isServer(=house0)일 때만
+    //       동작하는 것과 의도적으로 다른 부분입니다.
+    // ─────────────────────────────────────────────────────────────────────────
+    private Dictionary<int, List<string>> receivedZOptChunks = new Dictionary<int, List<string>>();
+
+    public void RPC_BroadcastZOptResult(string payload)
+    {
+        int totalChunks = (payload.Length + CHUNK_SIZE - 1) / CHUNK_SIZE;
+        int messageId = UnityEngine.Random.Range(0, 100000);
+
+        for (int i = 0; i < totalChunks; i++)
+        {
+            int startIndex = i * CHUNK_SIZE;
+            int length = Mathf.Min(CHUNK_SIZE, payload.Length - startIndex);
+            string chunk = payload.Substring(startIndex, length);
+            RPC_SendZOptChunk(messageId, i, totalChunks, chunk);
+        }
+    }
+
+    [Rpc(RpcSources.All, RpcTargets.All)]
+    public void RPC_SendZOptChunk(int messageId, int chunkIndex, int totalChunks, string chunkData)
+    {
+        if (!receivedZOptChunks.ContainsKey(messageId))
+        {
+            receivedZOptChunks[messageId] = new List<string>(new string[totalChunks]);
+        }
+
+        receivedZOptChunks[messageId][chunkIndex] = chunkData;
+
+        foreach (var chunk in receivedZOptChunks[messageId])
+        {
+            if (chunk == null) return; // 아직 모든 청크가 도착하지 않음
+        }
+
+        string fullData = string.Join("", receivedZOptChunks[messageId]);
+        receivedZOptChunks.Remove(messageId);
+
+        var runner = FindObjectOfType<LocalOptimizationRunner>();
+        if (runner != null)
+        {
+            runner.ApplyReceivedOptimizationResult(fullData);
+        }
+        else
+        {
+            Debug.LogWarning("[TransferManager] Received Z-key optimization result but no LocalOptimizationRunner found in scene to apply it.");
+        }
+    }
+
     /// <summary>
     /// Transform a point from Python's optimized space to local Unity space.
     /// Same logic as OffsetCalculator.TransformToLocalSpace
