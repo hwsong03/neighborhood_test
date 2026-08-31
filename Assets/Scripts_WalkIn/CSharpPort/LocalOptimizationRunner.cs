@@ -20,10 +20,6 @@ public class LocalOptimizationRunner : MonoBehaviour
     [Tooltip("Which house am I (0, 1, or 2)? Temporary manual field until Step 8 wires this to SceneSelection.type.")]
     [SerializeField] int myType = 0;
 
-    [Header("Optimization Algorithm")]
-    [Tooltip("Off = existing Differential Evolution search (DifferentialEvolutionOptimizer.cs, unchanged). On = the new DIRECT algorithm (DirectOptimizer.cs). Both produce the same Result shape and go through the identical apply/broadcast pipeline below, so this is a straight A/B switch for comparison -- flip it back to compare against the original DE baseline at any time.")]
-    [SerializeField] bool useDirectAlgorithm = false;
-
     const string RoomId = "2";
     const int NumHouses = 3;
 
@@ -44,6 +40,7 @@ public class LocalOptimizationRunner : MonoBehaviour
     void Update()
     {
         bool zPressed = Input.GetKeyDown(KeyCode.Z);
+        bool mPressed = Input.GetKeyDown(KeyCode.M);
         bool triggerFired = false;
 
         if (OVRInput.Get(OVRInput.Button.PrimaryIndexTrigger))
@@ -60,21 +57,31 @@ public class LocalOptimizationRunner : MonoBehaviour
             triggerHeldSince = -1f;
         }
 
-        bool trigger = zPressed || triggerFired;
+        // Z (or the held controller trigger) runs the original, unchanged DE search;
+        // M runs the new DIRECT algorithm -- separate keys instead of one key plus an
+        // Inspector toggle, so either can be fired directly without checking/flipping
+        // a switch first.
+        bool runDE = zPressed || triggerFired;
+        bool runDirect = mPressed;
 
-        if (trigger && !isRunning)
+        if ((runDE || runDirect) && !isRunning)
         {
-            Debug.Log("[LocalOptimizationRunner] Z/right trigger held -- starting Unity-only optimization (no Python).");
-            RunOptimizationAndApply();
+            Debug.Log($"[LocalOptimizationRunner] {(runDirect ? "M pressed" : "Z/right trigger held")} -- starting Unity-only optimization (no Python).");
+            RunOptimizationAndApply(runDirect);
         }
-        else if (trigger && isRunning)
+        else if ((runDE || runDirect) && isRunning)
         {
-            Debug.LogWarning("[LocalOptimizationRunner] Z/right trigger held, but a run is already in progress -- ignoring.");
+            Debug.LogWarning("[LocalOptimizationRunner] Optimization key pressed, but a run is already in progress -- ignoring.");
         }
     }
 
-    [ContextMenu("Run Optimization And Apply")]
-    public async void RunOptimizationAndApply()
+    [ContextMenu("Run Optimization And Apply (DE)")]
+    void RunOptimizationAndApplyMenuDE() => RunOptimizationAndApply(useDirectAlgorithm: false);
+
+    [ContextMenu("Run Optimization And Apply (DIRECT)")]
+    void RunOptimizationAndApplyMenuDirect() => RunOptimizationAndApply(useDirectAlgorithm: true);
+
+    public async void RunOptimizationAndApply(bool useDirectAlgorithm)
     {
         if (isRunning)
         {
