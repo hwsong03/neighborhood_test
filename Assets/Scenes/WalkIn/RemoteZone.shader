@@ -11,6 +11,13 @@ Shader "Custom/RemoteZone"
 
         // voronoi
         _P("P", Range(1,2)) = 2
+
+        // Off before optimization has ever run (houses are still overlapping at
+        // origin, so _Users positions are meaningless) -- see Regions.cs's feedZone.
+        // Unlike LocalZone.shader, this shader's default (no valid circle data) is
+        // to CLIP -- this flag has to skip the clip check entirely, not just leave
+        // the clip loop unable to find a circle.
+        _EnableZoneClipping("Enable Zone Clipping", Range(0, 1)) = 1
     }
     SubShader
     {
@@ -31,6 +38,7 @@ Shader "Custom/RemoteZone"
         fixed4 _Colors[10];
         int _WhichRegion;
         int _BaseRegion;
+        float _EnableZoneClipping;
 
         // zone 1 and count
         uniform float4 _EachZone[1024];
@@ -62,11 +70,26 @@ Shader "Custom/RemoteZone"
 
         void surf(Input IN, inout SurfaceOutputStandard o)
         {
-    
-            float minDist = 1e8; 
-            int minI = 0; 
+            // Before optimization has ever run, _Users is meaningless (every house
+            // is still overlapping at origin) -- this shader's normal logic defaults
+            // to hiding everything in that state (no valid circle = clip), which is
+            // backwards from what we want here, so skip the clip check entirely and
+            // just render normally.
+            if (_EnableZoneClipping <= 0.5)
+            {
+                fixed4 cPass = tex2D(_MainTex, IN.uv_MainTex) * _Color;
+                o.Albedo = cPass.rgb;
+                o.Metallic = _Metallic;
+                o.Smoothness = _Glossiness;
+                o.Emission = _Emission;
+                o.Alpha = cPass.a;
+                return;
+            }
+
+            float minDist = 1e8;
+            int minI = 0;
             bool isInAnyCircle = false;
-    
+
 
             for (int i = 0; i < _Length; i++)
             {
@@ -77,15 +100,15 @@ Shader "Custom/RemoteZone"
                     minDist = dist;
                     minI = i;
                 }
-        
+
                 // Check if point is in any circle except base region
                 if (i != _BaseRegion && isInsideCircle(IN.worldPos, i))
                 {
                     isInAnyCircle = true;
                 }
             }
-    
-    
+
+
             // if not inside circle clip
             if (!isInAnyCircle)
             {
@@ -93,10 +116,10 @@ Shader "Custom/RemoteZone"
             }
             else
             {
-        
+
                 if (minI == _WhichRegion)
                 {
-                    
+
                     fixed4 c = tex2D(_MainTex, IN.uv_MainTex) * _Color;
                     o.Albedo = c.rgb;
                     o.Metallic = _Metallic;
@@ -106,7 +129,7 @@ Shader "Custom/RemoteZone"
                 }
                 else
                 {
-                    //¿©±â¼­ ¹®Á¦»ý±â´Â°Å °°Àºµ¥
+                    //ï¿½ï¿½ï¿½â¼­ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Â°ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
                     clip(-1);
                     /*
                     fixed4 c = tex2D(_MainTex, IN.uv_MainTex) * _Color;
@@ -117,7 +140,7 @@ Shader "Custom/RemoteZone"
                     o.Alpha = c.a;
                     */
                 }
-                
+
             }
         }
 

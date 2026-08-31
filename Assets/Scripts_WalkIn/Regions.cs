@@ -305,6 +305,16 @@ public class Regions : MonoBehaviour
 
     void feedZone(GameObject whichPrefab, Vector4[] userPosVec4, int baseRegion, int whichRegion, ZoneMode zoneMode, float zoneRadius = 1.2f)
     {
+        // Before optimization has ever run, every house is still overlapping at
+        // origin (kept that way on purpose -- see Arrange_Walkin.Start()), so
+        // _Users positions are meaningless. LocalZone/RemoteZone.shader's clip
+        // logic reacting to that meaningless data was hiding houses (RemoteZone's
+        // default with no valid circle is to hide, not show) that should just be
+        // visible until there's a real arrangement to clip against. Same signal
+        // LocalROI.cs already uses for "has optimization happened".
+        bool optimizationHappened = GameObject.Find("traverseZone") != null || GameObject.Find("traverseZone_0") != null;
+
+
         // Broadcast as a global shader property instead of a per-material array --
         // Material.SetVectorArray on a property that has no Properties{} block entry
         // (as _Users doesn't) isn't reliably readable/applied per-material; the
@@ -336,7 +346,7 @@ public class Regions : MonoBehaviour
 
                     material.SetInt("_ZoneMode", (int)zoneMode);
                     material.SetFloat("_ZoneRadius", zoneRadius);
-                    material.SetFloat("_EnableZoneClipping", 1.0f); //
+                    material.SetFloat("_EnableZoneClipping", optimizationHappened ? 1.0f : 0.0f);
                     material.SetFloat("_P", 2.0f); // Voronoi distance parameter
                 }
             }
