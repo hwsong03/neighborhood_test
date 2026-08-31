@@ -14,10 +14,6 @@ Shader "Custom/LocalZone"
         // voronoi
         _P("P", Range(1,2)) = 2
 
-        // Off before optimization has ever run (houses are still overlapping at
-        // origin, so _Users positions are meaningless) -- see Regions.cs's feedZone.
-        _EnableZoneClipping("Enable Zone Clipping", Range(0, 1)) = 1
-
     }
 
     SubShader
@@ -39,8 +35,7 @@ Shader "Custom/LocalZone"
         float4 _Users[10];
         fixed4 _Colors[10];
         int _WhichRegion;
-        int _BaseRegion; // ï¿½Ì°ï¿½ ï¿½ï¿½ user count ï¿½ï¿½È£
-        float _EnableZoneClipping;
+        int _BaseRegion; // ÀÌ°Ô ³» user count ¹øÈ£
 
 
         struct Input
@@ -75,23 +70,20 @@ Shader "Custom/LocalZone"
             int minI = 0;
             bool shouldClip = false;
 
-            if (_EnableZoneClipping > 0.5)
+            for (int i = 0; i < _Length; i++)
             {
-                for (int i = 0; i < _Length; i++)
+                float dist = pow(pow(abs(IN.worldPos.x - _Users[i].x), _P) + pow(abs(IN.worldPos.z - _Users[i].z), _P), 1 / _P);
+
+                if (dist < minDist)
                 {
-                    float dist = pow(pow(abs(IN.worldPos.x - _Users[i].x), _P) + pow(abs(IN.worldPos.z - _Users[i].z), _P), 1 / _P);
-
-                    if (dist < minDist)
-                    {
-                        minDist = dist;
-                        minI = i;
-                    }
-
-                    // Check for circle intersection (skip base region)
-                    if (i != _BaseRegion && isInsideCircle(IN.worldPos, i))
-                    {
-                        shouldClip = true;
-                    }
+                    minDist = dist;
+                    minI = i;
+                }
+        
+                // Check for circle intersection (skip base region)
+                if (i != _BaseRegion && isInsideCircle(IN.worldPos, i))
+                {
+                    shouldClip = true;
                 }
             }
     
