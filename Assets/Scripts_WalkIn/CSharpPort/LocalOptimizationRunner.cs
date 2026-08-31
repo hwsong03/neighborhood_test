@@ -171,14 +171,22 @@ public class LocalOptimizationRunner : MonoBehaviour
     // Per-house freespace/boundary/ROI, each centered on that house's own avatar
     // position -- exactly like Python's real X-key flow (received_userpos_data centers
     // the circle on wherever the user actually stood), NOT a fixed dummy point. For my
-    // own house, LocalAvatar's real tracked position is the source of truth; for the
-    // other houses (no live second/third user in solo testing), the "Characters"
-    // placeholder is the best available stand-in -- same data source Regions.cs's
-    // X-key handler already reads via getTransAtOrigin(houses[i], characters[i]).
+    // own house, LocalAvatar's real tracked position is the source of truth; for a house
+    // with a real connected remote player, RemoteAvatar/RemoteAvatar1's own current
+    // position (Joint Chest, same as LocalAvatar) is the source of truth -- the
+    // "Characters" placeholder is only a last-resort stand-in for a house nobody is
+    // actually connected to (it never tracks a live position on its own, see
+    // Arrange_Walkin.Start()/ApplyAvatarPositions -- it only gets written to by a
+    // previous optimization run applying its own result). Using it for a house that DOES
+    // have a real remote user was centering that house's ROI/boundary on stale/default
+    // data instead of where that player actually stood.
     (Polygon[] freespaces, CircleShape[] boundaries, CircleShape[] rois, CoordinateTransform.Point2D[] originalLocalCentroids) BuildOptimizationInputs()
     {
         GameObject localAvatarForInput = GameObject.Find("LocalAvatar");
+        GameObject remoteAvatarForInput = GameObject.Find("RemoteAvatar");
+        GameObject remoteAvatar1ForInput = GameObject.Find("RemoteAvatar1");
         GameObject charactersForInput = GameObject.Find("Characters");
+        ResolveRemoteIndices(myType, out int remoteIndexForInput, out int remote1IndexForInput);
 
         var freespaces = new Polygon[NumHouses];
         var boundaries = new CircleShape[NumHouses];
@@ -188,16 +196,22 @@ public class LocalOptimizationRunner : MonoBehaviour
         for (int i = 0; i < NumHouses; i++)
         {
             double posX = 0, posZ = 0;
-            if (i == myType && localAvatarForInput != null)
+            GameObject avatarForPos = null;
+            if (i == myType) avatarForPos = localAvatarForInput;
+            else if (i == remoteIndexForInput) avatarForPos = remoteAvatarForInput;
+            else if (i == remote1IndexForInput) avatarForPos = remoteAvatar1ForInput;
+
+            if (avatarForPos != null)
             {
-                // LocalAvatar's own root transform doesn't reflect real head/positional
-                // tracking -- Meta Avatar SDK re-derives the root from the OVRCameraRig's
-                // pose, not from where the player has actually walked to. SceneSelection.cs's
-                // X-key handler and CameraController.cs both read the Joint Chest/Joint Head
-                // bone instead for exactly this reason; do the same here so the boundary/ROI
-                // circles are centered on where the avatar is actually standing.
-                Transform jointChest = AvatarJointHelper.FindJointChest(localAvatarForInput.transform);
-                Vector3 avatarPos = jointChest != null ? jointChest.position : localAvatarForInput.transform.position;
+                // Avatar root transform doesn't reflect real head/positional tracking --
+                // Meta Avatar SDK re-derives the root from the tracked rig's pose, not
+                // from where the player has actually walked to. SceneSelection.cs's X-key
+                // handler and CameraController.cs both read the Joint Chest/Joint Head
+                // bone instead for exactly this reason; do the same here so the
+                // boundary/ROI circles are centered on where the avatar is actually
+                // standing, for every house that has a real avatar, not just my own.
+                Transform jointChest = AvatarJointHelper.FindJointChest(avatarForPos.transform);
+                Vector3 avatarPos = jointChest != null ? jointChest.position : avatarForPos.transform.position;
                 posX = avatarPos.x;
                 posZ = avatarPos.z;
             }
@@ -404,14 +418,7 @@ public class LocalOptimizationRunner : MonoBehaviour
         Debug.Log($"[LocalOptimizationRunner] found: LocalAvatar={localAvatar != null}, RemoteAvatar={remoteAvatar != null}, RemoteAvatar1={remoteAvatar1 != null}, Characters={characters != null}");
         if (localAvatar != null) Debug.Log($"[LocalOptimizationRunner] LocalAvatar before={localAvatar.transform.position}");
 
-        // same remote-avatar-index mapping as TransferManager.cs's ApplyAvatarPositionsForClient
-        int remoteIndex, remote1Index;
-        switch (myType)
-        {
-            case 0: remoteIndex = 2; remote1Index = 1; break;
-            case 1: remoteIndex = 2; remote1Index = 0; break;
-            default: remoteIndex = 1; remote1Index = 0; break;
-        }
+        ResolveRemoteIndices(myType, out int remoteIndex, out int remote1Index);
 
         for (int i = 0; i < NumHouses; i++)
         {
@@ -739,5 +746,20 @@ public class LocalOptimizationRunner : MonoBehaviour
             if (sceneSel != null) return sceneSel.type;
         }
         return myType;
+    }
+
+    // Same remote-avatar-index mapping used throughout the project (Arrange_Walkin.cs,
+    // TransferManager.cs, OffsetCalculator.cs, SceneSelection.cs's updateavatar()):
+    // RemoteAvatar1 = the other house with the lower index, RemoteAvatar = the higher one.
+    // Shared by BuildOptimizationInputs() and ApplyAvatarPositions() so both agree on
+    // which house each remote avatar object represents.
+    static void ResolveRemoteIndices(int forType, out int remoteIndex, out int remote1Index)
+    {
+        switch (forType)
+        {
+            case 0: remoteIndex = 2; remote1Index = 1; break;
+            case 1: remoteIndex = 2; remote1Index = 0; break;
+            default: remoteIndex = 1; remote1Index = 0; break;
+        }
     }
 }
