@@ -61,11 +61,14 @@ public class CameraController : MonoBehaviour
     void Update()
     {
         // Right controller B button toggles this panning/spectator view on and off --
-        // for headset-only testing where there's no keyboard within reach.
-        if (OVRInput.GetDown(OVRInput.Button.Two))
+        // for headset-only testing where there's no keyboard within reach. P key does
+        // the same for desktop/simulator testing -- chosen because X/Y/Z/A/B are all
+        // already bound to other things in this project (Regions.cs/Sender.cs/
+        // Arrange_WalkIn.cs/TransferManager.cs/LocalOptimizationRunner.cs).
+        if (OVRInput.GetDown(OVRInput.Button.Two) || Input.GetKeyDown(KeyCode.P))
         {
             cam.enabled = !cam.enabled;
-            Debug.Log($"[CameraController] Panning view {(cam.enabled ? "enabled" : "disabled")} (B button).");
+            Debug.Log($"[CameraController] Panning view {(cam.enabled ? "enabled" : "disabled")}.");
         }
         if (!cam.enabled) return;
 
