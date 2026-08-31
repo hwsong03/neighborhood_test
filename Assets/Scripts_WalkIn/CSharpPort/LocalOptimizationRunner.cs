@@ -30,43 +30,59 @@ public class LocalOptimizationRunner : MonoBehaviour
     // DestroyImmediate was just fixed for.
     bool isRunning = false;
 
-    // Held-press threshold for the controller trigger -- a plain GetDown fired on every
+    // Held-press threshold for the controller triggers -- a plain GetDown fired on every
     // quick trigger tap the Meta XR Simulator emits while grabbing/dragging an avatar
-    // around, so optimization kept running by accident mid-drag. Requiring the trigger
+    // around, so optimization kept running by accident mid-drag. Requiring a trigger
     // to be held continuously for this long filters out those short taps.
     const float TriggerHoldSeconds = 0.6f;
-    float triggerHeldSince = -1f;
+    float rightTriggerHeldSince = -1f;
+    float leftTriggerHeldSince = -1f;
 
     void Update()
     {
         bool zPressed = Input.GetKeyDown(KeyCode.Z);
         bool mPressed = Input.GetKeyDown(KeyCode.M);
-        bool triggerFired = false;
+        bool rightTriggerFired = false;
+        bool leftTriggerFired = false;
 
         if (OVRInput.Get(OVRInput.Button.PrimaryIndexTrigger))
         {
-            if (triggerHeldSince < 0f) triggerHeldSince = Time.unscaledTime;
-            else if (Time.unscaledTime - triggerHeldSince >= TriggerHoldSeconds)
+            if (rightTriggerHeldSince < 0f) rightTriggerHeldSince = Time.unscaledTime;
+            else if (Time.unscaledTime - rightTriggerHeldSince >= TriggerHoldSeconds)
             {
-                triggerFired = true;
-                triggerHeldSince = float.PositiveInfinity; // don't fire again until released
+                rightTriggerFired = true;
+                rightTriggerHeldSince = float.PositiveInfinity; // don't fire again until released
             }
         }
         else
         {
-            triggerHeldSince = -1f;
+            rightTriggerHeldSince = -1f;
         }
 
-        // Z (or the held controller trigger) runs the original, unchanged DE search;
-        // M runs the new DIRECT algorithm -- separate keys instead of one key plus an
-        // Inspector toggle, so either can be fired directly without checking/flipping
-        // a switch first.
-        bool runDE = zPressed || triggerFired;
-        bool runDirect = mPressed;
+        if (OVRInput.Get(OVRInput.Button.SecondaryIndexTrigger))
+        {
+            if (leftTriggerHeldSince < 0f) leftTriggerHeldSince = Time.unscaledTime;
+            else if (Time.unscaledTime - leftTriggerHeldSince >= TriggerHoldSeconds)
+            {
+                leftTriggerFired = true;
+                leftTriggerHeldSince = float.PositiveInfinity; // don't fire again until released
+            }
+        }
+        else
+        {
+            leftTriggerHeldSince = -1f;
+        }
+
+        // Z / right controller trigger runs the original, unchanged DE search;
+        // M / left controller trigger runs the new DIRECT algorithm -- separate
+        // keys/triggers instead of one plus an Inspector toggle, so either can be
+        // fired directly without checking/flipping a switch first.
+        bool runDE = zPressed || rightTriggerFired;
+        bool runDirect = mPressed || leftTriggerFired;
 
         if ((runDE || runDirect) && !isRunning)
         {
-            Debug.Log($"[LocalOptimizationRunner] {(runDirect ? "M pressed" : "Z/right trigger held")} -- starting Unity-only optimization (no Python).");
+            Debug.Log($"[LocalOptimizationRunner] {(runDirect ? "M/left trigger held" : "Z/right trigger held")} -- starting Unity-only optimization (no Python).");
             RunOptimizationAndApply(runDirect);
         }
         else if ((runDE || runDirect) && isRunning)
@@ -184,7 +200,8 @@ public class LocalOptimizationRunner : MonoBehaviour
         finally
         {
             stopwatch.Stop();
-            Debug.Log($"[LocalOptimizationRunner] Optimization ({(useDirectAlgorithm ? "DIRECT" : "DE")}) took {stopwatch.Elapsed.TotalSeconds:F2}s from Z/trigger press to finish.");
+            string algorithmLabel = useDirectAlgorithm ? "DIRECT" : "DE";
+            Debug.Log($"[LocalOptimizationRunner] ({algorithmLabel}: {stopwatch.Elapsed.TotalSeconds:F2}s)");
             isRunning = false;
         }
     }
