@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Linq;
 using UnityEngine;
 using Fusion;
 using Fusion.Sockets;
@@ -18,6 +19,14 @@ public class HouseJoinOrderAssigner : MonoBehaviour, INetworkRunnerCallbacks
     public Arrange_Walkin arrangeWalkin;
 
     private bool assigned = false;
+
+    // Rank-vs-time-stable tracking, used to make the index immune to Photon's
+    // room-lifetime actor numbering (see TryAssign below) while still tolerating
+    // a brief window where different clients haven't yet converged on the same
+    // ActivePlayers view during simultaneous connects.
+    private int lastComputedIdx = -1;
+    private float idxStableSince = -1f;
+    private const float StabilitySeconds = 1f;
 
     void Start()
     {
@@ -51,26 +60,51 @@ public class HouseJoinOrderAssigner : MonoBehaviour, INetworkRunnerCallbacks
         if (assigned || runner == null || !runner.IsRunning) return;
         if (!runner.LocalPlayer.IsRealPlayer) return;
 
-        // This project runs Fusion in Shared Mode, where Photon's actor
-        // numbering starts at 1, not 0 -- confirmed live via debug log: a lone
-        // first-joined client got PlayerId==1 (and AsIndex==1, NOT 0 either;
-        // neither property is 0-based here). Subtract 1 to get a 0-based house
-        // index. PlayerId is assigned once by the server in join order and is
-        // identical everywhere the instant any client learns a player exists,
-        // so indexing by it (unlike ranking within this client's locally-observed
-        // runner.ActivePlayers snapshot, which can differ machine to machine
-        // while a session is still connecting) is race-free.
-        int idx = runner.LocalPlayer.PlayerId - 1;
+        // Rank the local player among CURRENTLY connected players (sorted by
+        // PlayerId ascending) instead of using raw PlayerId magnitude. Raw
+        // PlayerId reflects the room's cumulative join history -- Photon actor
+        // numbers are never reused within a room's lifetime, even after someone
+        // disconnects -- and DefaultRoomName is a hardcoded fixed string (so lab
+        // machines auto-join without typing a room code), so the same room can
+        // persist across separate test runs and leave stale actor numbers
+        // allocated. A client that is really the 2nd person connected right now
+        // could still get PlayerId==3 (house2) instead of PlayerId==2 (house1)
+        // if the room has a leftover gap from an earlier session. Ranking within
+        // ActivePlayers sidesteps that: it's always 0/1/2 for however many
+        // people are actually connected right now, regardless of the room's history.
+        //
+        // An earlier version of this feature used this same ActivePlayers-ranking
+        // approach and moved away from it (see git history) because different
+        // clients can briefly see different ActivePlayers snapshots of each other
+        // while a session is still connecting. Instead of computing this once and
+        // locking immediately, keep recomputing every frame and only commit once
+        // the computed index has held steady for StabilitySeconds -- long enough
+        // for a connecting session's player list to converge everywhere, short
+        // enough not to meaningfully delay startup once it has.
+        var sortedPlayers = runner.ActivePlayers.OrderBy(p => p.PlayerId).ToList();
+        int idx = sortedPlayers.IndexOf(runner.LocalPlayer);
+
+        if (idx < 0)
+        {
+            // Not visible in our own ActivePlayers view yet -- retry next frame.
+            lastComputedIdx = -1;
+            idxStableSince = -1f;
+            return;
+        }
+
+        if (idx != lastComputedIdx)
+        {
+            lastComputedIdx = idx;
+            idxStableSince = Time.time;
+            return; // value just changed -- wait for it to hold steady before committing
+        }
+
+        if (Time.time - idxStableSince < StabilitySeconds) return;
 
         if (idx > 2)
         {
             Debug.LogWarning($"[HouseJoinOrderAssigner] Join position {idx} exceeds available houses (0-2); clamping to house2.");
             idx = 2;
-        }
-        if (idx < 0)
-        {
-            Debug.LogWarning($"[HouseJoinOrderAssigner] Computed negative join position {idx} (PlayerId={runner.LocalPlayer.PlayerId}); clamping to house0.");
-            idx = 0;
         }
 
         if (arrangeWalkin == null)
@@ -92,7 +126,7 @@ public class HouseJoinOrderAssigner : MonoBehaviour, INetworkRunnerCallbacks
         if (Regions.Instance != null) Regions.Instance.chooseHouseNum = idx;
         if (OffsetCalculator.Instance != null) OffsetCalculator.Instance.SetId(idx);
 
-        Debug.Log($"[HouseJoinOrderAssigner] Local player {runner.LocalPlayer} joined at position {idx} -> house{idx} (isServer={arrangeWalkin.isServer})");
+        Debug.Log($"[HouseJoinOrderAssigner] Local player {runner.LocalPlayer} ranked at position {idx} among {sortedPlayers.Count} currently active players -> house{idx} (isServer={arrangeWalkin.isServer})");
     }
 
     public void OnPlayerJoined(NetworkRunner runner, PlayerRef player)

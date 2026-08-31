@@ -498,6 +498,11 @@ public class SceneSelection : MonoBehaviour
     // 한번만 브로드캐스트하기 위한 플래그
     private bool avatarIndicesBroadcasted = false;
 
+    // Tracks how long each not-yet-identified remote avatar GameObject has failed
+    // to match AvatarIndexForUser, keyed by GetInstanceID(). See updateavatar().
+    private Dictionary<int, float> unidentifiedRemoteSince = new Dictionary<int, float>();
+    private const float UnidentifiedRemoteFallbackTimeout = 3f;
+
     void checkAvatartandUpdate()
     {
         // 모든 type에서 자신의 LocalAvatar 인덱스 설정
@@ -575,10 +580,27 @@ public class SceneSelection : MonoBehaviour
                 }
             }
 
-            // If we couldn't identify the user, fall back to old behavior
+            // If we couldn't identify the user yet, LocalAvatarIndex probably hasn't
+            // network-synced from the owning client yet -- retry next frame instead of
+            // guessing, since whichever pivot slot gets assigned here is never revisited
+            // (pivot1/pivot2 are never reset), so an early wrong guess sticks for the
+            // whole session. Only fall back to discovery order after a generous timeout,
+            // as a last-resort safeguard rather than the default path.
             if (remoteUserId == -1)
             {
-                // Fallback: just assign in order found
+                int goId = go.GetInstanceID();
+                if (!unidentifiedRemoteSince.TryGetValue(goId, out float firstSeen))
+                {
+                    unidentifiedRemoteSince[goId] = Time.time;
+                    return;
+                }
+
+                if (Time.time - firstSeen < UnidentifiedRemoteFallbackTimeout)
+                {
+                    return;
+                }
+
+                Debug.LogWarning($"[SceneSelection] Could not identify remote avatar by LocalAvatarIndex after {UnidentifiedRemoteFallbackTimeout}s -- falling back to discovery order (may be mislabeled).");
                 if (pivot1 == null)
                 {
                     pivot1 = go;
@@ -590,6 +612,8 @@ public class SceneSelection : MonoBehaviour
                 }
                 return;
             }
+
+            unidentifiedRemoteSince.Remove(go.GetInstanceID());
 
             // Determine correct assignment based on user mapping:
             // pivot1 should be RemoteAvatar1, pivot2 should be RemoteAvatar
