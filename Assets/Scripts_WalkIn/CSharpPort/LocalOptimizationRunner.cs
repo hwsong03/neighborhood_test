@@ -20,6 +20,10 @@ public class LocalOptimizationRunner : MonoBehaviour
     [Tooltip("Which house am I (0, 1, or 2)? Temporary manual field until Step 8 wires this to SceneSelection.type.")]
     [SerializeField] int myType = 0;
 
+    [Header("Optimization Algorithm")]
+    [Tooltip("Off = existing Differential Evolution search (DifferentialEvolutionOptimizer.cs, unchanged). On = the new DIRECT algorithm (DirectOptimizer.cs). Both produce the same Result shape and go through the identical apply/broadcast pipeline below, so this is a straight A/B switch for comparison -- flip it back to compare against the original DE baseline at any time.")]
+    [SerializeField] bool useDirectAlgorithm = false;
+
     const string RoomId = "2";
     const int NumHouses = 3;
 
@@ -78,6 +82,12 @@ public class LocalOptimizationRunner : MonoBehaviour
             return;
         }
         isRunning = true;
+        // Measured from the moment Z/trigger fires to the moment this whole run (including
+        // house reset, input building, and applying the result -- not just the search
+        // itself) finishes, so a straight "how long did that take" comparison between the
+        // two algorithms doesn't need to account for anything else separately. Always
+        // logged in the `finally` below, success or failure, per request.
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             // Always re-read the live house index from SceneSelection right before a run --
@@ -101,13 +111,19 @@ public class LocalOptimizationRunner : MonoBehaviour
             // every time this ran -- confirmed 2026-08-14 by correlating Editor.log
             // timestamps: the connection state flipped to Disconnected immediately after
             // "Optimization done", with no other trigger in between.
-            Debug.Log("[LocalOptimizationRunner] Stage 3/6: running DE search on background thread (this is the ~1min+ part)...");
-            var optResult = await System.Threading.Tasks.Task.Run(() =>
-                DifferentialEvolutionOptimizer.Optimize(
-                    freespaces, boundaries, rois, ObjectiveFunction.ObjectiveParams.Default,
-                    maxIter: 50, popSizeMultiplier: 15, translationBound: 5.0, rotationBound: 30.0));
+            string algorithmName = useDirectAlgorithm ? "DIRECT" : "DE";
+            Debug.Log($"[LocalOptimizationRunner] Stage 3/6: running {algorithmName} search on background thread (this is the ~1min+ part)...");
+            var optResult = useDirectAlgorithm
+                ? await System.Threading.Tasks.Task.Run(() =>
+                    DirectOptimizer.Optimize(
+                        freespaces, boundaries, rois, ObjectiveFunction.ObjectiveParams.Default,
+                        maxEvaluations: 3000, translationBound: 5.0, rotationBound: 30.0))
+                : await System.Threading.Tasks.Task.Run(() =>
+                    DifferentialEvolutionOptimizer.Optimize(
+                        freespaces, boundaries, rois, ObjectiveFunction.ObjectiveParams.Default,
+                        maxIter: 50, popSizeMultiplier: 15, translationBound: 5.0, rotationBound: 30.0));
 
-            Debug.Log("[LocalOptimizationRunner] Stage 4/6: DE search done, applying house/avatar placements...");
+            Debug.Log($"[LocalOptimizationRunner] Stage 4/6: {algorithmName} search done, applying house/avatar placements...");
             LogOptimizationResult(optResult);
 
             ApplyHousePlacements(optResult, originalLocalCentroids);
@@ -160,6 +176,8 @@ public class LocalOptimizationRunner : MonoBehaviour
         }
         finally
         {
+            stopwatch.Stop();
+            Debug.Log($"[LocalOptimizationRunner] Optimization ({(useDirectAlgorithm ? "DIRECT" : "DE")}) took {stopwatch.Elapsed.TotalSeconds:F2}s from Z/trigger press to finish.");
             isRunning = false;
         }
     }
