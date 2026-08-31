@@ -114,6 +114,17 @@ public class LocalOptimizationRunner : MonoBehaviour
             ApplyAvatarPositions(optResult, originalLocalCentroids);
             BuildSelectedZones(optResult, originalLocalCentroids);
 
+            // RemoteAvatar/RemoteAvatar1's position is continuously re-synced by Fusion to
+            // that person's own real, live tracked position -- the one-time
+            // ApplyAvatarPositions() assignment above only sticks for a single frame before
+            // the next network tick snaps it back to their raw position, which is why the
+            // avatar visibly ends up away from its ROI/boundary circle instead of centered
+            // in it. SceneSelection.LateUpdate()'s existing "OPTIMIZATION OFFSET" system
+            // solves exactly this (re-derives the correct view position every frame from
+            // whatever raw position the network just wrote), but until now only the old
+            // Y-key path (Arrange_WalkIn.cs) turned it on. Reuse the same mechanism here.
+            EnableRemoteAvatarRetargeting();
+
             Debug.Log("[LocalOptimizationRunner] Stage 5/6: drawing traverse zone / boundary / ROI outlines...");
 
             // The green Neighborhood-boundary outline (paper Fig 1(d)/Fig 2(c)/Sec 5.1:
@@ -710,6 +721,7 @@ public class LocalOptimizationRunner : MonoBehaviour
             ApplyHousePlacements(optResult, originalLocalCentroids);
             ApplyAvatarPositions(optResult, originalLocalCentroids);
             BuildSelectedZones(optResult, originalLocalCentroids);
+            EnableRemoteAvatarRetargeting(); // see RunOptimizationAndApply's own call for why this is needed
             DrawBoundaryCirclesForMe(optResult, originalLocalCentroids);
             DrawROICirclesForMe(optResult, originalLocalCentroids);
             MarkTraverseZoneRan();
@@ -746,6 +758,37 @@ public class LocalOptimizationRunner : MonoBehaviour
             if (sceneSel != null) return sceneSel.type;
         }
         return myType;
+    }
+
+    // 원격 아바타(RemoteAvatar/RemoteAvatar1)는 Fusion이 매 프레임 그 사람의 실제 물리적
+    // 위치로 계속 동기화하므로, ApplyAvatarPositions()의 한 번짜리 position 대입은 다음
+    // 네트워크 틱에 바로 원래 위치로 되돌아간다. SceneSelection.LateUpdate()의 "OPTIMIZATION
+    // OFFSET" 시스템(houses[i].transform을 매 프레임 참조해서 원격 아바타 위치를 다시 계산)이
+    // 정확히 이 문제를 해결하기 위한 것이지만, 지금까지는 구 Y키 경로(Arrange_WalkIn.cs)에서만
+    // 켜졌다. Z키 경로가 이미 갱신해놓은 houses[i].transform을 그대로 재사용할 수 있으므로,
+    // 여기서도 같은 시스템을 켠다.
+    void EnableRemoteAvatarRetargeting()
+    {
+        if (arrangeWalkin == null || arrangeWalkin.sceneSelection == null)
+        {
+            Debug.LogWarning("[LocalOptimizationRunner] No sceneSelection reference -- cannot enable continuous remote-avatar retargeting (remote avatars may not stay centered in their ROI).");
+            return;
+        }
+
+        var sceneSel = arrangeWalkin.sceneSelection.GetComponent<SceneSelection>();
+        if (sceneSel == null)
+        {
+            Debug.LogWarning("[LocalOptimizationRunner] sceneSelection GameObject has no SceneSelection component -- cannot enable continuous remote-avatar retargeting.");
+            return;
+        }
+
+        if (OffsetCalculator.Instance == null)
+        {
+            Debug.LogWarning("[LocalOptimizationRunner] No OffsetCalculator.Instance -- cannot enable continuous remote-avatar retargeting.");
+            return;
+        }
+
+        sceneSel.SetupRotationAwareTransform(OffsetCalculator.Instance, null);
     }
 
     // Same remote-avatar-index mapping used throughout the project (Arrange_Walkin.cs,
