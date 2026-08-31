@@ -87,21 +87,41 @@ public class TransferManager : NetworkBehaviour
             }
         }
 
-        // This used to re-feed every house's zone-clipping marker (Regions.userPosVec4,
-        // -> shader _Users) from regions.characters[i].transform.position every single
-        // frame. That looked like a harmless "keep it fresh" read, but
-        // SceneSelection.Update()'s physical-space pivot sync (the `target.transform.
-        // GetChild(0).GetChild(N)` block, gated on A/B/C) writes into those exact same
-        // "Characters" child objects every frame too -- confirmed live via execute_code
-        // (forcing characters[0]'s position elsewhere snapped straight back to the
-        // remote avatar's current Joint Chest position on the very next read). So this
-        // loop was continuously overwriting each house's zone marker with wherever that
-        // house's avatar currently is, long after optimization already placed it --
-        // this is what made a house's zone-clipped visible area appear to drag around
-        // following its avatar instead of staying where optimization put it.
-        // ApplyAvatarPositions()/ApplyAvatarPositionsForClient() already set each
-        // marker once (via SetUserPositionDirect) from the optimization result itself,
-        // which is the only update these markers should get.
+        // Feed every house's zone-clipping marker (Regions.userPosVec4 -> shader
+        // _Users) from regions.characters[i].transform.position every frame, but ONLY
+        // until optimization has run once. Before that, this is the only thing that
+        // gives an unoptimized remote house's marker any usable (non-zero) value at
+        // all -- SceneSelection.Update()'s physical-space pivot sync (the
+        // `target.transform.GetChild(0).GetChild(N)` block, gated on A/B/C) keeps
+        // these same "Characters" child objects live-tracking each remote avatar's
+        // current position, and without this loop reading that into userPosVec4, a
+        // house nobody has run the optimizer for yet stays stuck at the (0,0,0)
+        // default from Arrange_Walkin.Start() forever -- which the Remote-zone clip
+        // shader treats as "no valid circle", hiding that house entirely (same root
+        // cause as the earlier unconnected-house-invisible bug, but hitting every
+        // real house pre-optimization too).
+        //
+        // Once optimization HAS run (traverseZone exists -- same signal LocalROI.cs
+        // already uses for this), stop: ApplyAvatarPositions()/
+        // ApplyAvatarPositionsForClient() already set each marker once via
+        // SetUserPositionDirect from the optimization result itself, and continuing
+        // to re-feed from characters[i] here would immediately overwrite that fixed
+        // value with wherever the avatar has since walked to (confirmed live via
+        // execute_code -- this is what caused a house's zone-clipped visible area to
+        // drag around following its avatar after optimization instead of staying put).
+        bool zoneOptimizationHappened = GameObject.Find("traverseZone") != null || GameObject.Find("traverseZone_0") != null;
+        if (!zoneOptimizationHappened && arrangeMR.GetComponent<Arrange_Walkin>().characterInitialized == true)
+        {
+            var regions = regionsObj.GetComponent<Regions>();
+            for (int i = 0; i < regions.characters.Count; i++)
+            {
+                if (walkin == false)
+                {
+                    Vector3 charPos = regions.characters[i].transform.position;
+                    regions.SetUserPosition(i, charPos);
+                }
+            }
+        }
 
 
 
