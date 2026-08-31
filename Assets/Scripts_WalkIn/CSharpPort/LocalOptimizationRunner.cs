@@ -147,7 +147,6 @@ public class LocalOptimizationRunner : MonoBehaviour
                         maxIter: 50, popSizeMultiplier: 15, translationBound: 5.0, rotationBound: 30.0));
 
             Debug.Log($"[LocalOptimizationRunner] Stage 4/6: {algorithmName} search done, applying house/avatar placements...");
-            LogOptimizationResult(optResult);
 
             ApplyHousePlacements(optResult, originalLocalCentroids);
             ApplyAvatarPositions(optResult, originalLocalCentroids);
@@ -192,7 +191,6 @@ public class LocalOptimizationRunner : MonoBehaviour
             // their houses/avatars/boundary+ROI circles end up in the identical
             // arrangement, instead of each machine trying to (and never being asked to)
             // run its own separate optimization.
-            Debug.Log("[LocalOptimizationRunner] Broadcasting optimization result to other clients...");
             BroadcastOptimizationResult(optResult, originalLocalCentroids);
 
             Debug.Log("[LocalOptimizationRunner] Stage 6/6: done.");
@@ -296,21 +294,9 @@ public class LocalOptimizationRunner : MonoBehaviour
             boundaries[i] = new CircleShape(rcx, rcy, 1.2);
             rois[i] = new CircleShape(rcx, rcy, 0.5); // 50cm ROI radius, per the paper (was incorrectly 0.6 here)
             originalLocalCentroids[i] = new CoordinateTransform.Point2D(fsResult.OriginalCentroidX, fsResult.OriginalCentroidY);
-
-            Debug.Log($"[LocalOptimizationRunner] house {i} avatarPos=({posX:F4}, {posZ:F4}), recenteredBoundary=({rcx:F4}, {rcy:F4}), originalLocalCentroid=({fsResult.OriginalCentroidX:F4}, {fsResult.OriginalCentroidY:F4})");
         }
 
         return (freespaces, boundaries, rois, originalLocalCentroids);
-    }
-
-    void LogOptimizationResult(DifferentialEvolutionOptimizer.Result optResult)
-    {
-        Debug.Log($"[LocalOptimizationRunner] Optimization done. Final loss={optResult.BestLoss:F4}");
-        for (int i = 0; i < optResult.MovingStates.Length; i++)
-        {
-            var s = optResult.MovingStates[i];
-            Debug.Log($"[LocalOptimizationRunner] house {i + 1} DE state: dx={s.Dx:F4}, dy={s.Dy:F4}, angle={s.AngleDeg:F4}");
-        }
     }
 
     // Which color a house's outlines (boundary circle + ROI circle) get, by
@@ -454,10 +440,8 @@ public class LocalOptimizationRunner : MonoBehaviour
         for (int i = 0; i < NumHouses && i < arrangeWalkin.houses.Count; i++)
         {
             var pos = placements[i].Position;
-            Vector3 before = arrangeWalkin.houses[i].transform.position;
             arrangeWalkin.houses[i].transform.position = new Vector3((float)pos.X, 0f, (float)pos.Y);
             arrangeWalkin.houses[i].transform.rotation = Quaternion.Euler(0, (float)placements[i].RotationDeg, 0);
-            Debug.Log($"[LocalOptimizationRunner] house[{i}] '{arrangeWalkin.houses[i].name}': before={before}, after=({pos.X:F4}, 0, {pos.Y:F4}), rotationY={placements[i].RotationDeg:F4}");
         }
     }
 
@@ -468,17 +452,12 @@ public class LocalOptimizationRunner : MonoBehaviour
         GameObject remoteAvatar1 = GameObject.Find("RemoteAvatar1");
         GameObject characters = GameObject.Find("Characters");
 
-        Debug.Log($"[LocalOptimizationRunner] found: LocalAvatar={localAvatar != null}, RemoteAvatar={remoteAvatar != null}, RemoteAvatar1={remoteAvatar1 != null}, Characters={characters != null}");
-        if (localAvatar != null) Debug.Log($"[LocalOptimizationRunner] LocalAvatar before={localAvatar.transform.position}");
-
         ResolveRemoteIndices(myType, out int remoteIndex, out int remote1Index);
 
         for (int i = 0; i < NumHouses; i++)
         {
             var avatarPos = HouseArrangementApplier.ComputeAvatarPosition(optResult, originalLocalCentroids, myType, i);
             var worldPos = new Vector3((float)avatarPos.X, 0f, (float)avatarPos.Y);
-
-            Debug.Log($"[LocalOptimizationRunner] avatar[{i}] computed worldPos=({avatarPos.X:F4}, 0, {avatarPos.Y:F4})");
 
             if (i == myType)
             {
@@ -628,7 +607,6 @@ public class LocalOptimizationRunner : MonoBehaviour
         // would surface as an uncatchable top-level exception instead of a clean log line.
         if (transferManager.Object == null || transferManager.Runner == null || !transferManager.Runner.IsRunning)
         {
-            Debug.Log("[LocalOptimizationRunner] Not connected to a running Fusion session -- skipping network broadcast (solo/offline testing). Local result is already applied.");
             return;
         }
 
@@ -756,8 +734,6 @@ public class LocalOptimizationRunner : MonoBehaviour
                 FinalRois = rois,
                 LossHistory = new List<double>()
             };
-
-            Debug.Log("[LocalOptimizationRunner] Applying optimization result received from another client.");
 
             ResetHousesToOrigin();
             ApplyHousePlacements(optResult, originalLocalCentroids);

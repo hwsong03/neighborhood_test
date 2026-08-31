@@ -153,7 +153,6 @@ public class TransferManager : NetworkBehaviour
 
         if (myType != movedPlayerType)
         {
-            Debug.Log($"[Fusion] server -> client: {fromServerVector}, player type: {movedPlayerType}");
             lastReceivedVector = fromServerVector;
             sceneSelection.GetComponent<SceneSelection>().ApplyRoomMovement(fromServerVector, movedPlayerType);
         }
@@ -163,8 +162,6 @@ public class TransferManager : NetworkBehaviour
     public void RPC_VecFromClientToServer(Vector3 fromClientVector, int movedPlayerType, RpcInfo info = default)
     {
         int myType = sceneSelection.GetComponent<SceneSelection>().type;
-
-        Debug.Log($"[Fusion] client -> server from {info.Source}: {fromClientVector}, player type: {movedPlayerType}");
 
         if (myType != movedPlayerType)
         {
@@ -188,7 +185,6 @@ public class TransferManager : NetworkBehaviour
 
         if (myType != movedPlayerType)
         {
-            Debug.Log($"[Fusion] broadcast to client: {fromClientVector}, player type: {movedPlayerType}");
             lastReceivedVector = fromClientVector;
             sceneSelection.GetComponent<SceneSelection>().ApplyRoomMovement(fromClientVector, movedPlayerType);
         }
@@ -404,12 +400,6 @@ public class TransferManager : NetworkBehaviour
             // Add myLocalCentroid to convert from relative-to-freespace-center to world position
             Vector3 worldPoint = myLocalCentroid + relativePoint;
             transformedPoints[i] = new Vector3(worldPoint.x, points[i].y, worldPoint.z);
-
-            // Debug: log first 3 points
-            if (i < 3)
-            {
-                Debug.Log($"[TransferManager] point {i}: optimized=({points[i].x:F2}, {points[i].z:F2}) -> world=({worldPoint.x:F2}, {worldPoint.z:F2})");
-            }
         }
         return transformedPoints;
     }
@@ -454,7 +444,6 @@ public class TransferManager : NetworkBehaviour
             DisableRemoteAvatarSync();
 
 
-            Debug.Log($"[TransferManager] Client {myType} received opt result");
             receivedInfo = JsonConvert.DeserializeObject<List<PythonEachHouse>>(sendingOptString);
             pythonAllHouse = receivedInfo;
 
@@ -474,8 +463,6 @@ public class TransferManager : NetworkBehaviour
                 pythonAllHouse[myType].polygon.centroid.y
             );
 
-            Debug.Log($"[TransferManager] Client myType={myType}, myPolygonFinalCentroid={myPolygonFinalCentroid}, myRotation={myRotation}, myLocalCentroid={myLocalCentroid}");
-
             // Apply perspective-based house arrangement
             ApplyHouseArrangementForClient(pythonAllHouse, myType, myPolygonFinalCentroid, myRotation);
 
@@ -483,8 +470,6 @@ public class TransferManager : NetworkBehaviour
             ApplyAvatarPositionsForClient(pythonAllHouse, myType, myPolygonFinalCentroid, myRotation, myLocalCentroid, myCharacter, Characters);
 
             // draw traverse zone - client's myType 기준으로 그림
-            Debug.Log($"[TransferManager] Drawing traverse zone for myType={myType}, myPolygonFinalCentroid={myPolygonFinalCentroid}, myRotation={myRotation}, myLocalCentroid={myLocalCentroid}");
-            Debug.Log($"[TransferManager] Traverse zone nested={pythonAllHouse[myType].traverse.IsNested}, count={(pythonAllHouse[myType].traverse.IsNested ? pythonAllHouse[myType].traverse.NestedCoords.Count : 1)}");
             DrawTraverseZoneForClient(pythonAllHouse, myType, myPolygonFinalCentroid, myRotation, myLocalCentroid);
 
             // boundary/ROI outlines, colored per house index -- same convention as
@@ -499,11 +484,9 @@ public class TransferManager : NetworkBehaviour
             arrangeMR.GetComponent<Arrange_Walkin>().DrawHouseOutlines();
 
             // [OFFSET CALCULATOR] Apply perspective-based offsets for clients
-            Debug.Log($"[TransferManager] Offset check: OffsetCalculator.Instance={OffsetCalculator.Instance != null}, pythonAllHouse={pythonAllHouse != null}, sceneSelection={sceneSelection != null}");
             if (OffsetCalculator.Instance != null && pythonAllHouse != null)
             {
                 OffsetCalculator.Instance.ApplyOffsetsFromPythonData(pythonAllHouse);
-                Debug.Log($"[TransferManager] Client offsets applied for myType={myType}");
 
                 // [SCENE SELECTION OFFSET] Enable rotation-aware transform in SceneSelection
                 if (sceneSelection != null)
@@ -615,8 +598,6 @@ public class TransferManager : NetworkBehaviour
         GameObject remote1 = GameObject.Find("RemoteAvatar1");
         GameObject remote = GameObject.Find("RemoteAvatar");
 
-        Debug.Log($"[TransferManager] ApplyAvatarPositionsForClient: remote1={remote1 != null}, remote={remote != null}");
-
         // Get remote indices based on my type (matches OffsetCalculator.GetRemoteIndices)
         // RemoteAvatar1 = first to connect, RemoteAvatar = second to connect
         int remoteIndex, remote1Index;
@@ -659,7 +640,6 @@ public class TransferManager : NetworkBehaviour
                 if (myCharacter != null)
                 {
                     myCharacter.transform.position = worldPosition;
-                    Debug.Log($"[TransferManager] LocalAvatar positioned at {worldPosition}");
                 }
 
                 // Use direct method for Y key initialization (no filtering)
@@ -671,12 +651,10 @@ public class TransferManager : NetworkBehaviour
                 if (i == remoteIndex && remote != null)
                 {
                     remote.transform.position = worldPosition;
-                    Debug.Log($"[TransferManager] RemoteAvatar (house {i}) positioned at {worldPosition}");
                 }
                 else if (i == remote1Index && remote1 != null)
                 {
                     remote1.transform.position = worldPosition;
-                    Debug.Log($"[TransferManager] RemoteAvatar1 (house {i}) positioned at {worldPosition}");
                 }
 
                 // Also update the Character placeholder
@@ -837,8 +815,6 @@ public class TransferManager : NetworkBehaviour
     [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
     public void RPC_BroadcastAvatarIndices(int index0, int index1, int index2)
     {
-        Debug.Log($"[TransferManager] Received avatar indices: [{index0}, {index1}, {index2}]");
-
         // SceneSelection의 type을 가져와서 내 인덱스 결정
         var sceneSelComp = sceneSelection.GetComponent<SceneSelection>();
         int myType = sceneSelComp.type;
@@ -851,7 +827,6 @@ public class TransferManager : NetworkBehaviour
             var avatarBehaviour = localAvatar.GetComponent<Meta.XR.MultiplayerBlocks.Fusion.AvatarBehaviourFusion>();
             if (avatarBehaviour != null && avatarBehaviour.Object.HasStateAuthority)
             {
-                Debug.Log($"[TransferManager] Setting my LocalAvatar index to {myIndex} (type={myType})");
                 avatarBehaviour.LocalAvatarIndex = myIndex;
             }
         }
@@ -866,13 +841,10 @@ public class TransferManager : NetworkBehaviour
         bool isServer = arrangeMR.GetComponent<Arrange_Walkin>().isServer;
         if (!isServer) return;
 
-        Debug.Log($"[TransferManager] SetModeAndBroadcast called - isWalkinMode: {isWalkinMode}");
-
         // 서버 자신도 직접 적용
         ApplyMode(isWalkinMode);
 
         // 클라이언트들에게 RPC로 전송
-        Debug.Log("[TransferManager] Sending RPC_SyncMode to all clients");
         RPC_SyncMode(isWalkinMode);
     }
 
@@ -880,12 +852,10 @@ public class TransferManager : NetworkBehaviour
     public void RPC_SyncMode(bool isWalkinMode)
     {
         bool isServer = arrangeMR.GetComponent<Arrange_Walkin>().isServer;
-        Debug.Log($"[TransferManager] RPC_SyncMode received - isWalkinMode: {isWalkinMode}, isServer: {isServer}");
 
         // 서버는 이미 SetModeAndBroadcast에서 적용했으므로 클라이언트만 처리
         if (isServer) return;
 
-        Debug.Log("[TransferManager] Client applying mode from RPC");
         ApplyMode(isWalkinMode);
     }
 
@@ -914,8 +884,6 @@ public class TransferManager : NetworkBehaviour
                 sceneSelComp.OnModeB();  // B키: 거리계산 mode
             }
         }
-
-        Debug.Log($"[TransferManager] Mode applied - walkin: {isWalkinMode}, modeB: {!isWalkinMode}, startSendingVec: {startSendingVec}");
     }
 
 }

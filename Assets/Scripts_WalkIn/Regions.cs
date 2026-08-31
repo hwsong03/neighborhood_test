@@ -109,7 +109,6 @@ public class Regions : MonoBehaviour
                 );
             }
             filtersInitialized = true;
-            Debug.Log($"[Regions] Zone filters initialized: count={houses.Count}, freq={zoneFilterFrequency}, minCutoff={zoneFilterMinCutoff}, beta={zoneFilterBeta}");
         }
     }
 
@@ -204,8 +203,6 @@ public class Regions : MonoBehaviour
             }
 
 
-
-            Debug.Log(userPosString); // ((1.5, 0), (1.5, 0), (2.47, 3.26), (0.8, 1.5))
 
             receiveFromPython = false;
             sender.SendToPython(userPosString);

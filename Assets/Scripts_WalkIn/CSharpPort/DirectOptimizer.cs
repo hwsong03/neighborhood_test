@@ -283,8 +283,6 @@ public static class DirectOptimizer
             }
         }
 
-        UnityEngine.Debug.Log($"[DirectOptimizer] Converged after {evaluations} evaluations (cap was {maxEvaluations}), best loss={globalBest:F4}.");
-
         return new DifferentialEvolutionOptimizer.Result
         {
             BestLoss = globalBest,

@@ -83,7 +83,6 @@ public class OffsetCalculator : MonoBehaviour
         if (arrangeMR != null)
         {
             id = arrangeMR.GetComponent<Arrange_Walkin>().chooseHouseNum;
-            Debug.Log($"[OffsetCalculator] Initialized with id={id}");
         }
 
         // Initially no offsets - everything starts at (0,0,0)
@@ -97,7 +96,6 @@ public class OffsetCalculator : MonoBehaviour
     public void SetId(int newId)
     {
         id = newId;
-        Debug.Log($"[OffsetCalculator] id set to {id} via join-order assignment");
     }
 
     /// <summary>
@@ -374,8 +372,6 @@ public class OffsetCalculator : MonoBehaviour
         remoteOffset = Vector3.zero;
         remote1Offset = Vector3.zero;
         offsetsCalculated = false;
-
-        Debug.Log("[OffsetCalculator] Offsets cleared");
     }
 
     // NOTE: LateUpdate offset application is now handled by SceneSelection.cs

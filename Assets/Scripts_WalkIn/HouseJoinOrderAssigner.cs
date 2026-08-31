@@ -125,8 +125,6 @@ public class HouseJoinOrderAssigner : MonoBehaviour, INetworkRunnerCallbacks
 
         if (Regions.Instance != null) Regions.Instance.chooseHouseNum = idx;
         if (OffsetCalculator.Instance != null) OffsetCalculator.Instance.SetId(idx);
-
-        Debug.Log($"[HouseJoinOrderAssigner] Local player {runner.LocalPlayer} ranked at position {idx} among {sortedPlayers.Count} currently active players -> house{idx} (isServer={arrangeWalkin.isServer})");
     }
 
     public void OnPlayerJoined(NetworkRunner runner, PlayerRef player)

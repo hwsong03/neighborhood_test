@@ -400,12 +400,10 @@ public class Arrange_Walkin : MonoBehaviour
             if (OffsetCalculator.Instance != null && pythonAllHouse != null)
             {
                 OffsetCalculator.Instance.ApplyOffsetsFromPythonData(pythonAllHouse);
-                Debug.Log($"[Arrange_WalkIn] OffsetCalculator applied. remote1Target={OffsetCalculator.Instance.remote1AvatarTarget}, remoteTarget={OffsetCalculator.Instance.remoteAvatarTarget}");
 
                 // [SCENE SELECTION OFFSET] Enable rotation-aware transform in SceneSelection
                 if (sceneSelection != null)
                 {
-                    Debug.Log("[Arrange_WalkIn] Calling SetupRotationAwareTransform on SceneSelection");
                     sceneSelection.GetComponent<SceneSelection>().SetupRotationAwareTransform(
                         OffsetCalculator.Instance, pythonAllHouse
                     );
@@ -469,8 +467,6 @@ public class Arrange_Walkin : MonoBehaviour
         // Find remote avatars
         GameObject remote1 = GameObject.Find("RemoteAvatar1");
         GameObject remote = GameObject.Find("RemoteAvatar");
-
-        Debug.Log($"[Arrange_WalkIn] ApplyAvatarPositions: remote1={remote1 != null}, remote={remote != null}");
 
         // Get remote indices based on my id (matches OffsetCalculator.GetRemoteIndices)
         // RemoteAvatar1 = first to connect, RemoteAvatar = second to connect

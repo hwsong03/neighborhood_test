@@ -520,7 +520,6 @@ public class SceneSelection : MonoBehaviour
                     {
                         if (avatarBehaviour.LocalAvatarIndex != AvatarIndexForUser[type])
                         {
-                            Debug.Log($"[SceneSelection] Setting LocalAvatar index from {avatarBehaviour.LocalAvatarIndex} to {AvatarIndexForUser[type]} for type {type}");
                             avatarBehaviour.LocalAvatarIndex = AvatarIndexForUser[type];
                         }
                     }
@@ -545,7 +544,6 @@ public class SceneSelection : MonoBehaviour
                 var transferManager = transfer.GetComponent<TransferManager>();
                 if (transferManager != null)
                 {
-                    Debug.Log($"[SceneSelection] Broadcasting avatar indices: [{AvatarIndexForUser[0]}, {AvatarIndexForUser[1]}, {AvatarIndexForUser[2]}]");
                     transferManager.SetAvatarIndexForClients(AvatarIndexForUser);
                     avatarIndicesBroadcasted = true;
                 }
@@ -644,13 +642,11 @@ public class SceneSelection : MonoBehaviour
             {
                 pivot1 = go;
                 go.transform.name += "1";  // Rename to RemoteAvatar1
-                Debug.Log($"[SceneSelection] Assigned user{remoteUserId} avatar to pivot1 (RemoteAvatar1)");
             }
             else if (remoteUserId == expectedRemoteUserId && pivot2 == null)
             {
                 pivot2 = go;
                 // Keep name as RemoteAvatar
-                Debug.Log($"[SceneSelection] Assigned user{remoteUserId} avatar to pivot2 (RemoteAvatar)");
             }
             else if (pivot1 == null)
             {
@@ -746,7 +742,6 @@ public class SceneSelection : MonoBehaviour
     // [FUSION - 추가] A키 눌렀을 때 실행되는 함수 (freeze mode)
     public void OnModeA()
     {
-        Debug.Log("[SceneSelection] OnModeA called - freeze mode");
         modeB = false;
 
         // End modeB in ModeBCalculator
@@ -761,7 +756,6 @@ public class SceneSelection : MonoBehaviour
     // [FUSION - 추가] B키 눌렀을 때 실행되는 함수 (거리계산 mode)
     public void OnModeB()
     {
-        Debug.Log("[SceneSelection] OnModeB called - distance mode");
         modeB = true;
 
         // Start modeB in ModeBCalculator
@@ -891,8 +885,6 @@ public class SceneSelection : MonoBehaviour
         var calc = offsetCalc ?? OffsetCalculator.Instance;
         if (calc == null) return;
 
-        int myId = calc.id;
-
         // Get remote indices
         calc.GetRemoteIndices(out int remoteIdx, out int remote1Idx);
         remoteIndex = remoteIdx;
@@ -909,14 +901,12 @@ public class SceneSelection : MonoBehaviour
             {
                 remoteHouseTransform = housesList[remoteIndex].transform;
                 remoteFixedOffset = remoteHouseTransform.position;
-                Debug.Log($"[OptOffset] remoteFixedOffset (house {remoteIndex}): {remoteFixedOffset}");
             }
 
             if (remote1Index >= 0 && remote1Index < housesList.Count)
             {
                 remote1HouseTransform = housesList[remote1Index].transform;
                 remote1FixedOffset = remote1HouseTransform.position;
-                Debug.Log($"[OptOffset] remote1FixedOffset (house {remote1Index}): {remote1FixedOffset}");
             }
         }
         else
@@ -925,7 +915,6 @@ public class SceneSelection : MonoBehaviour
         }
 
         useOptimizationOffset = true;
-        Debug.Log($"[OptOffset] Simple house transform enabled for id={myId}");
     }
 
     // [OPTIMIZATION OFFSET] Legacy method - kept for compatibility but now calls rotation-aware version
@@ -938,17 +927,14 @@ public class SceneSelection : MonoBehaviour
         if (remote1 != null)
         {
             remote1Offset = remote1TargetPos - remote1.transform.position;
-            Debug.Log($"[OptOffset] Remote1 legacy offset set: {remote1Offset}");
         }
 
         if (remote != null)
         {
             remoteOffset = remoteTargetPos - remote.transform.position;
-            Debug.Log($"[OptOffset] Remote legacy offset set: {remoteOffset}");
         }
 
         // Note: useOptimizationOffset should be set by SetupRotationAwareTransform
-        Debug.Log("[OptOffset] Legacy SetOptimizationOffsets called - prefer SetupRotationAwareTransform");
     }
 
     // [OPTIMIZATION OFFSET] Call this to clear offsets (e.g., when returning to normal mode)
@@ -962,6 +948,5 @@ public class SceneSelection : MonoBehaviour
         remote1Index = -1;
         remoteHouseTransform = null;
         remote1HouseTransform = null;
-        Debug.Log("[OptOffset] Optimization offsets cleared");
     }
 }
