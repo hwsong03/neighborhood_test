@@ -87,21 +87,21 @@ public class TransferManager : NetworkBehaviour
             }
         }
 
-        // update user pos (with OneEuroFilter for smooth zone boundaries)
-        if (arrangeMR.GetComponent<Arrange_Walkin>().characterInitialized == true)
-        {
-            var regions = regionsObj.GetComponent<Regions>();
-            for (int i = 0; i < regions.characters.Count; i++)
-            {
-                if (walkin == false)
-                {
-                    Vector3 charPos = regions.characters[i].transform.position;
-                    // Use filtered method for smooth zone boundaries
-                    regions.SetUserPosition(i, charPos);
-                }
-
-            }
-        }
+        // This used to re-feed every house's zone-clipping marker (Regions.userPosVec4,
+        // -> shader _Users) from regions.characters[i].transform.position every single
+        // frame. That looked like a harmless "keep it fresh" read, but
+        // SceneSelection.Update()'s physical-space pivot sync (the `target.transform.
+        // GetChild(0).GetChild(N)` block, gated on A/B/C) writes into those exact same
+        // "Characters" child objects every frame too -- confirmed live via execute_code
+        // (forcing characters[0]'s position elsewhere snapped straight back to the
+        // remote avatar's current Joint Chest position on the very next read). So this
+        // loop was continuously overwriting each house's zone marker with wherever that
+        // house's avatar currently is, long after optimization already placed it --
+        // this is what made a house's zone-clipped visible area appear to drag around
+        // following its avatar instead of staying where optimization put it.
+        // ApplyAvatarPositions()/ApplyAvatarPositionsForClient() already set each
+        // marker once (via SetUserPositionDirect) from the optimization result itself,
+        // which is the only update these markers should get.
 
 
 
