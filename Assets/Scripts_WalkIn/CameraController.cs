@@ -113,4 +113,18 @@ public class CameraController : MonoBehaviour
             this.transform.rotation = filteredRotation;
         }
     }
+
+    // Called by LocalOptimizationRunner right before applying a Z/M optimization
+    // result (whether run locally or received from another client) -- the result
+    // is only meaningful to look at from the normal avatar viewpoint, not this
+    // spectator display, so force back to the normal view instead of leaving
+    // panning on and having the result go unseen.
+    public void DisablePanningView()
+    {
+        if (cam != null && cam.enabled)
+        {
+            cam.enabled = false;
+            Debug.Log("[CameraController] Panning view disabled (forced off for optimization).");
+        }
+    }
 }

@@ -119,6 +119,8 @@ public class LocalOptimizationRunner : MonoBehaviour
             // for this local run and for applying results broadcast from other clients.
             myType = ResolveMyType();
 
+            DisablePanningViewIfActive();
+
             Debug.Log("[LocalOptimizationRunner] Stage 1/6: resetting houses to origin...");
             ResetHousesToOrigin();
 
@@ -683,6 +685,7 @@ public class LocalOptimizationRunner : MonoBehaviour
         try
         {
             myType = ResolveMyType();
+            DisablePanningViewIfActive();
 
             double[] values;
             try
@@ -776,6 +779,17 @@ public class LocalOptimizationRunner : MonoBehaviour
             if (sceneSel != null) return sceneSel.type;
         }
         return myType;
+    }
+
+    // A Z/M optimization result only matters from the normal avatar viewpoint --
+    // called at the very start of both RunOptimizationAndApply (local run) and
+    // ApplyReceivedOptimizationResult (result received from another client), so
+    // panning being left on doesn't leave the result effectively invisible on
+    // whichever computer applies it.
+    void DisablePanningViewIfActive()
+    {
+        var cameraController = FindFirstObjectByType<CameraController>();
+        if (cameraController != null) cameraController.DisablePanningView();
     }
 
     // 원격 아바타(RemoteAvatar/RemoteAvatar1)는 Fusion이 매 프레임 그 사람의 실제 물리적
