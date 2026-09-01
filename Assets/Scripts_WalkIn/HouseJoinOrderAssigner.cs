@@ -130,6 +130,26 @@ public class HouseJoinOrderAssigner : MonoBehaviour, INetworkRunnerCallbacks
     public void OnPlayerJoined(NetworkRunner runner, PlayerRef player)
     {
         TryAssign(runner);
+
+        // A newly-joined player's house had no real avatar until just now, so any
+        // earlier optimization run on this client computed that house's zone marker
+        // and drawn ROI/boundary circles from stale placeholder (Characters dummy)
+        // data instead of a real position. Clear the "optimization has run" signal
+        // (GameObject.Find("traverseZone...") existing) that Regions.cs/
+        // TransferManager.cs's zone-clip marker feed and LocalROI.cs both key off of,
+        // plus the now-stale drawn circles themselves, so everything reverts to
+        // pre-optimization behavior (live-tracking zone visibility, matching every
+        // other not-yet-optimized house) until someone runs the optimizer again with
+        // the new player actually present. Purely local to this client's own scene --
+        // each client does this independently as it learns about the new player, no
+        // networking involved.
+        foreach (GameObject obj in GameObject.FindObjectsOfType<GameObject>())
+        {
+            if (obj.name.StartsWith("traverseZone") || obj.name.Contains("roiCircle") || obj.name.Contains("boundaryCircle"))
+            {
+                DestroyImmediate(obj);
+            }
+        }
     }
 
     public void OnPlayerLeft(NetworkRunner runner, PlayerRef player) { }
