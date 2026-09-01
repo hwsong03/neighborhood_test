@@ -152,6 +152,19 @@ public class LocalOptimizationRunner : MonoBehaviour
 
             Debug.Log($"[LocalOptimizationRunner] Stage 4/6: {algorithmName} search done, applying house/avatar placements...");
 
+            // Disabling panning back at the top of this method only stops it ONCE, at
+            // the instant Z/M fired -- the search above just spent anywhere from ~10s to
+            // over a minute on a background thread, during which every other
+            // MonoBehaviour's Update() (including CameraController's own panning-toggle
+            // check) kept running normally every frame. If panning got toggled back on
+            // at any point during that wait (a second press, or simply someone re-enabling
+            // it out of habit while waiting), nothing turned it back off again before the
+            // result below gets applied -- confirmed live: pressing Z a second time with
+            // panning already on left it on straight through to the end. Re-disable it
+            // here too, right as the result is actually about to become visible, so the
+            // final state doesn't depend on what happened to be pressed during the wait.
+            DisablePanningViewIfActive();
+
             ApplyHousePlacements(optResult, originalLocalCentroids);
             ApplyAvatarPositions(optResult, originalLocalCentroids);
             BuildSelectedZones(optResult, originalLocalCentroids);
@@ -830,10 +843,12 @@ public class LocalOptimizationRunner : MonoBehaviour
     }
 
     // A Z/M optimization result only matters from the normal avatar viewpoint --
-    // called at the very start of both RunOptimizationAndApply (local run) and
-    // ApplyReceivedOptimizationResult (result received from another client), so
-    // panning being left on doesn't leave the result effectively invisible on
-    // whichever computer applies it.
+    // called at the start of ApplyReceivedOptimizationResult (result received from
+    // another client, applied synchronously start-to-finish, only one call needed)
+    // and TWICE in RunOptimizationAndApply (local run): once at the very start for
+    // immediate feedback, and again right before the result is applied, since the
+    // background search in between can take over a minute, long enough for panning
+    // to get toggled back on mid-wait with nothing to catch it otherwise.
     void DisablePanningViewIfActive()
     {
         var cameraController = FindFirstObjectByType<CameraController>();
