@@ -386,6 +386,20 @@ public class TransferManager : NetworkBehaviour
         }
     }
 
+    // ── 트리거/키 입력 알림 (헤드셋 HUD) ──────────────────────────────────────
+    // 역할: 누군가 Z/M 최적화를 시작했을 때 "houseN pressed ... (ALGO optimization)"
+    //       알림을 모든 헤드셋(누른 사람 자신 포함)에 3초간 띄운다.
+    //       LocalOptimizationRunner가 키/트리거 감지 직후 호출한다.
+    // 참고: 메시지가 짧아 RPC_BroadcastZOptResult처럼 청크로 나눌 필요가 없다.
+    [Rpc(RpcSources.All, RpcTargets.All)]
+    public void RPC_BroadcastTriggerNotification(string message)
+    {
+        if (HeadsetHUD.Instance != null)
+        {
+            HeadsetHUD.Instance.ShowNotification(message);
+        }
+    }
+
     /// <summary>
     /// Transform a point from Python's optimized space to local Unity space.
     /// Same logic as OffsetCalculator.TransformToLocalSpace

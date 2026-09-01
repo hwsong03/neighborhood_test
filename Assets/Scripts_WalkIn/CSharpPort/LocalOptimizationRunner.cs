@@ -83,6 +83,8 @@ public class LocalOptimizationRunner : MonoBehaviour
         if ((runDE || runDirect) && !isRunning)
         {
             Debug.Log($"[LocalOptimizationRunner] {(runDirect ? "M/left trigger held" : "Z/right trigger held")} -- starting Unity-only optimization (no Python).");
+            string inputDescription = mPressed ? "M key" : zPressed ? "Z key" : leftTriggerFired ? "left trigger" : "right trigger";
+            BroadcastTriggerNotification(runDirect, inputDescription);
             RunOptimizationAndApply(runDirect);
         }
         else if ((runDE || runDirect) && isRunning)
@@ -790,6 +792,36 @@ public class LocalOptimizationRunner : MonoBehaviour
     {
         var cameraController = FindFirstObjectByType<CameraController>();
         if (cameraController != null) cameraController.DisablePanningView();
+    }
+
+    // Broadcasts "houseN pressed <input> (DE|DIRECT optimization)" to every
+    // connected headset's HeadsetHUD (including this one's own), called right as
+    // the key/trigger fires, before the (possibly ~1min+) optimization run itself
+    // starts. Falls back to showing it only locally when not connected to a
+    // running Fusion session (solo/offline testing) -- same guard
+    // BroadcastOptimizationResult already uses for the same reason.
+    void BroadcastTriggerNotification(bool isDirect, string inputDescription)
+    {
+        int houseIndex = ResolveMyType();
+        string message = $"house{houseIndex} pressed {inputDescription} ({(isDirect ? "DIRECT" : "DE")} optimization)";
+
+        var transferManager = arrangeWalkin != null && arrangeWalkin.transfer != null
+            ? arrangeWalkin.transfer.GetComponent<TransferManager>()
+            : null;
+
+        bool networked = transferManager != null
+            && transferManager.Object != null
+            && transferManager.Runner != null
+            && transferManager.Runner.IsRunning;
+
+        if (networked)
+        {
+            transferManager.RPC_BroadcastTriggerNotification(message);
+        }
+        else if (HeadsetHUD.Instance != null)
+        {
+            HeadsetHUD.Instance.ShowNotification(message);
+        }
     }
 
     // 원격 아바타(RemoteAvatar/RemoteAvatar1)는 Fusion이 매 프레임 그 사람의 실제 물리적
