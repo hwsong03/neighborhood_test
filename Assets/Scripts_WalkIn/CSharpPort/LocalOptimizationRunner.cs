@@ -385,13 +385,17 @@ public class LocalOptimizationRunner : MonoBehaviour
         }
     }
 
-    // My own house's actual room shape (its freespace polygon's exterior ring --
-    // furniture-hole interior rings intentionally skipped, same "one boundary
-    // line, not one per cutout" call as DrawTraverseZoneForMe). Drawn IN ADDITION
-    // to my boundary/ROI circles above, not a replacement -- the circles are a
-    // fixed-radius stand-in for the individual area, this is what the room
-    // actually looks like, so someone can visually confirm their own circles
-    // sit inside their own freespace.
+    // My own house's actual room shape: the freespace polygon's exterior ring
+    // (the walls) AND every interior ring (a furniture cutout that doesn't touch
+    // the walls). Drawing only the exterior ring made this look identical to the
+    // whole room regardless of furniture -- furniture sitting away from the
+    // walls (the common case: a bed, a table) only ever shows up as an interior
+    // ring/hole in the polygon, never changes the exterior ring's shape at all,
+    // so skipping interior rings meant furniture was never visible here. Drawn
+    // IN ADDITION to my boundary/ROI circles above, not a replacement -- the
+    // circles are a fixed-radius stand-in for the individual area, this is what
+    // the room (minus furniture) actually looks like, so someone can visually
+    // confirm their own circles sit inside their own freespace, furniture and all.
     //
     // Deliberately draws ONLY myType, not all three houses -- per request, every
     // client should see just their own room outline, not everyone else's (which
@@ -406,8 +410,17 @@ public class LocalOptimizationRunner : MonoBehaviour
 
         var myFrame = CoordinateTransform.GetAbsoluteFrames(optResult)[myType];
         var myLocalCentroid = originalLocalCentroids[myType];
+        var freespace = optResult.FinalFreespaces[myType];
 
-        Coordinate[] ring = optResult.FinalFreespaces[myType].ExteriorRing.Coordinates;
+        DrawHouseOutlineRing(freespace.ExteriorRing.Coordinates, myFrame, myLocalCentroid, "houseOutline_mine_" + myType);
+        for (int h = 0; h < freespace.NumInteriorRings; h++)
+        {
+            DrawHouseOutlineRing(freespace.GetInteriorRingN(h).Coordinates, myFrame, myLocalCentroid, $"houseOutline_mine_{myType}_hole{h}");
+        }
+    }
+
+    void DrawHouseOutlineRing(Coordinate[] ring, CoordinateTransform.HouseFrame myFrame, CoordinateTransform.Point2D myLocalCentroid, string name)
+    {
         var points = new Vector3[ring.Length];
         for (int k = 0; k < ring.Length; k++)
         {
@@ -417,7 +430,7 @@ public class LocalOptimizationRunner : MonoBehaviour
             points[k] = new Vector3((float)worldP.X, 0.18f, (float)worldP.Y);
         }
 
-        var outlineObj = new GameObject("houseOutline_mine_" + myType);
+        var outlineObj = new GameObject(name);
         DrawZone(outlineObj, points, HouseOutlineColor(myType), HouseOutlineWidth);
     }
 
@@ -674,23 +687,42 @@ public class LocalOptimizationRunner : MonoBehaviour
             values.Add(optResult.MovingStates[i].AngleDeg);
         }
 
-        // Trailing variable-length section: each house's REAL freespace polygon
-        // exterior ring (point count, then that many x,y pairs) -- previously only
-        // that polygon's centroid was sent (a circle placeholder was rebuilt from
-        // it on the receiving end), which was enough for CoordinateTransform
-        // (only ever reads ".Centroid") but not enough to draw the actual room
-        // shape. Sending the full ring lets every receiving client reconstruct the
-        // true polygon and see (via DrawHouseOutlinesForMe) whether their own
+        // Trailing variable-length section: each house's REAL freespace polygon --
+        // exterior ring (point count, then that many x,y pairs), THEN interior
+        // ring count, then each interior ring the same way (point count + x,y
+        // pairs). Previously only the polygon's centroid was sent (a circle
+        // placeholder was rebuilt from it on the receiving end), which was enough
+        // for CoordinateTransform (only ever reads ".Centroid") but not enough to
+        // draw the actual room shape. Interior rings specifically matter here --
+        // furniture that doesn't touch the walls shows up ONLY as an interior
+        // ring, never changes the exterior ring, so omitting them would make
+        // DrawHouseOutlinesForMe's outline look identical to the bare room
+        // regardless of furniture. Sending both lets every receiving client
+        // reconstruct the true polygon (holes and all) and see whether their own
         // boundary/ROI circles really sit inside their own freespace, not just
         // whoever pressed Z/M locally.
         for (int i = 0; i < NumHouses; i++)
         {
-            Coordinate[] ring = optResult.FinalFreespaces[i].ExteriorRing.Coordinates;
-            values.Add(ring.Length);
-            foreach (var c in ring)
+            var freespace = optResult.FinalFreespaces[i];
+
+            Coordinate[] shell = freespace.ExteriorRing.Coordinates;
+            values.Add(shell.Length);
+            foreach (var c in shell)
             {
                 values.Add(c.X);
                 values.Add(c.Y);
+            }
+
+            values.Add(freespace.NumInteriorRings);
+            for (int h = 0; h < freespace.NumInteriorRings; h++)
+            {
+                Coordinate[] hole = freespace.GetInteriorRingN(h).Coordinates;
+                values.Add(hole.Length);
+                foreach (var c in hole)
+                {
+                    values.Add(c.X);
+                    values.Add(c.Y);
+                }
             }
         }
 
@@ -766,15 +798,29 @@ public class LocalOptimizationRunner : MonoBehaviour
                 freespaces = new Polygon[NumHouses];
                 for (int i = 0; i < NumHouses; i++)
                 {
-                    int count = (int)System.Math.Round(values[idx++]);
-                    if (count < 4 || idx + count * 2 > values.Length)
-                        throw new System.FormatException($"invalid freespace ring point count ({count}) for house {i}");
+                    LinearRing ReadRing(int forHouse)
+                    {
+                        int count = (int)System.Math.Round(values[idx++]);
+                        if (count < 4 || idx + count * 2 > values.Length)
+                            throw new System.FormatException($"invalid freespace ring point count ({count}) for house {forHouse}");
 
-                    var coords = new Coordinate[count];
-                    for (int k = 0; k < count; k++)
-                        coords[k] = new Coordinate(values[idx++], values[idx++]);
+                        var coords = new Coordinate[count];
+                        for (int k = 0; k < count; k++)
+                            coords[k] = new Coordinate(values[idx++], values[idx++]);
 
-                    freespaces[i] = Factory.CreatePolygon(Factory.CreateLinearRing(coords));
+                        return Factory.CreateLinearRing(coords);
+                    }
+
+                    LinearRing shell = ReadRing(i);
+
+                    if (idx >= values.Length)
+                        throw new System.FormatException($"payload ended before interior-ring count for house {i}");
+                    int holeCount = (int)System.Math.Round(values[idx++]);
+                    var holes = new LinearRing[holeCount];
+                    for (int h = 0; h < holeCount; h++)
+                        holes[h] = ReadRing(i);
+
+                    freespaces[i] = Factory.CreatePolygon(shell, holes);
                 }
             }
             catch (System.Exception e)
