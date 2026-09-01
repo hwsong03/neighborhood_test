@@ -75,10 +75,17 @@ public class HeadsetHUD : MonoBehaviour
         }
     }
 
+    // Semi-transparent black backing behind both HUD blocks, so the (opaque
+    // white) text stays readable against a bright real-world passthrough
+    // background instead of just floating unbacked over whatever's behind it.
+    static readonly Color PanelColor = new Color(0f, 0f, 0f, 0.6f);
+    const float TextPadding = 24f; // inset between the panel edge and the text, in canvas units
+
     void BuildUI()
     {
-        var legendCanvas = CreateWorldSpaceCanvas("HUD_Legend", new Vector3(LegendOffsetX, LegendOffsetY, Distance), 0.001f);
-        var legendText = CreateText(legendCanvas.transform, TextAnchor.LowerLeft, 18);
+        var legendCanvas = CreateWorldSpaceCanvas("HUD_Legend", new Vector3(LegendOffsetX, LegendOffsetY, Distance), 0.001f, new Vector2(900, 260));
+        CreateBackgroundPanel(legendCanvas.transform);
+        var legendText = CreateText(legendCanvas.transform, TextAnchor.LowerLeft, 30);
         // Controller-only -- this is only ever seen inside the headset, so the
         // keyboard-only equivalents (Z/M/P, and the server-only A/B freeze/distance
         // mode toggle, which has no controller mapping at all -- see TransferManager.
@@ -90,13 +97,14 @@ public class HeadsetHUD : MonoBehaviour
             "Left Trigger: run DIRECT optimization\n" +
             "B: toggle panning view";
 
-        var notifCanvas = CreateWorldSpaceCanvas("HUD_Notification", new Vector3(0f, 0.18f, Distance), 0.0012f);
+        var notifCanvas = CreateWorldSpaceCanvas("HUD_Notification", new Vector3(0f, 0.18f, Distance), 0.0012f, new Vector2(850, 220));
         notificationRoot = notifCanvas.gameObject;
-        notificationText = CreateText(notifCanvas.transform, TextAnchor.MiddleCenter, 26);
+        CreateBackgroundPanel(notifCanvas.transform);
+        notificationText = CreateText(notifCanvas.transform, TextAnchor.MiddleCenter, 40);
         notificationRoot.SetActive(false);
     }
 
-    Canvas CreateWorldSpaceCanvas(string name, Vector3 localOffset, float scale)
+    Canvas CreateWorldSpaceCanvas(string name, Vector3 localOffset, float scale, Vector2 size)
     {
         var go = new GameObject(name, typeof(RectTransform));
         go.transform.SetParent(centerEye, false);
@@ -108,10 +116,27 @@ public class HeadsetHUD : MonoBehaviour
         canvas.renderMode = RenderMode.WorldSpace;
 
         var rt = go.GetComponent<RectTransform>();
-        rt.sizeDelta = new Vector2(800, 200);
+        rt.sizeDelta = size;
 
         go.AddComponent<CanvasScaler>();
         return canvas;
+    }
+
+    // Plain flat-color Image filling the canvas -- added BEFORE the Text sibling
+    // (below, per BuildUI's call order) so it renders behind it, not in front.
+    void CreateBackgroundPanel(Transform parent)
+    {
+        var go = new GameObject("Background", typeof(RectTransform));
+        go.transform.SetParent(parent, false);
+
+        var rt = go.GetComponent<RectTransform>();
+        rt.anchorMin = Vector2.zero;
+        rt.anchorMax = Vector2.one;
+        rt.offsetMin = Vector2.zero;
+        rt.offsetMax = Vector2.zero;
+
+        var image = go.AddComponent<Image>();
+        image.color = PanelColor;
     }
 
     Text CreateText(Transform parent, TextAnchor anchor, int fontSize)
@@ -122,8 +147,8 @@ public class HeadsetHUD : MonoBehaviour
         var rt = go.GetComponent<RectTransform>();
         rt.anchorMin = Vector2.zero;
         rt.anchorMax = Vector2.one;
-        rt.offsetMin = Vector2.zero;
-        rt.offsetMax = Vector2.zero;
+        rt.offsetMin = new Vector2(TextPadding, TextPadding);
+        rt.offsetMax = new Vector2(-TextPadding, -TextPadding);
 
         var text = go.AddComponent<Text>();
         text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
