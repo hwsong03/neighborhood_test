@@ -82,14 +82,13 @@ public class HeadsetHUD : MonoBehaviour
         // Controller-only -- this is only ever seen inside the headset, so the
         // keyboard-only equivalents (Z/M/P, and the server-only A/B freeze/distance
         // mode toggle, which has no controller mapping at all -- see TransferManager.
-        // Update()) are left off. OVRInput.Button.Two (panning) is a combined virtual
-        // button that fires from EITHER controller -- confirmed against the Meta SDK's
-        // own per-controller button maps (OVRControllerTouch.Two=B, OVRControllerLTouch.
-        // Two=Y) -- so both are listed, not just the right controller.
+        // Update()) are left off. What needed spelling out was the two TRIGGERS
+        // (one per hand, two different functions) -- panning is a single button,
+        // shown as one line.
         legendText.text =
             "Right Trigger: run DE optimization\n" +
             "Left Trigger: run DIRECT optimization\n" +
-            "B (right) / Y (left): toggle panning view";
+            "B: toggle panning view";
 
         var notifCanvas = CreateWorldSpaceCanvas("HUD_Notification", new Vector3(0f, 0.18f, Distance), 0.0012f);
         notificationRoot = notifCanvas.gameObject;
