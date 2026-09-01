@@ -92,6 +92,20 @@ public class HouseJoinOrderAssigner : MonoBehaviour, INetworkRunnerCallbacks
             return;
         }
 
+        // Don't trust idx until our local ActivePlayers view has caught up with how
+        // many players the session actually reports right now. Without this, a
+        // simultaneously-connecting client can briefly see ONLY itself (idx==0),
+        // and because that one-player view doesn't change frame to frame, it looks
+        // "stable" after StabilitySeconds and locks in before an earlier-joined
+        // player has propagated into this client's ActivePlayers -- producing two
+        // clients that both believe they are house0.
+        if (runner.SessionInfo != null && sortedPlayers.Count < runner.SessionInfo.PlayerCount)
+        {
+            lastComputedIdx = -1;
+            idxStableSince = -1f;
+            return;
+        }
+
         if (idx != lastComputedIdx)
         {
             lastComputedIdx = idx;
