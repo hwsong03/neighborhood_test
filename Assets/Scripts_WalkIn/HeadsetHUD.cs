@@ -83,9 +83,14 @@ public class HeadsetHUD : MonoBehaviour
 
     void BuildUI()
     {
-        var legendCanvas = CreateWorldSpaceCanvas("HUD_Legend", new Vector3(LegendOffsetX, LegendOffsetY, Distance), 0.001f, new Vector2(900, 260));
+        // Box height (260 -> 190) and vertical anchor (LowerLeft -> MiddleLeft) tuned
+        // against an actual in-headset screenshot: the panel was noticeably taller
+        // than the 3 lines of text needed, leaving a large empty gap above them since
+        // LowerLeft anchors the block to the box's bottom edge. Shrinking the box AND
+        // centering the text closes that gap from both directions.
+        var legendCanvas = CreateWorldSpaceCanvas("HUD_Legend", new Vector3(LegendOffsetX, LegendOffsetY, Distance), 0.001f, new Vector2(900, 190));
         CreateBackgroundPanel(legendCanvas.transform);
-        var legendText = CreateText(legendCanvas.transform, TextAnchor.LowerLeft, 30);
+        var legendText = CreateText(legendCanvas.transform, TextAnchor.MiddleLeft, 30);
         // Controller-only -- this is only ever seen inside the headset, so the
         // keyboard-only equivalents (Z/M/P, and the server-only A/B freeze/distance
         // mode toggle, which has no controller mapping at all -- see TransferManager.

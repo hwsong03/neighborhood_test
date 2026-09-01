@@ -201,7 +201,6 @@ public class LocalOptimizationRunner : MonoBehaviour
             DrawTraverseZoneForMe(optResult, originalLocalCentroids, visible: false);
             DrawBoundaryCirclesForMe(optResult, originalLocalCentroids); // bigger (1.2m) circle outline -- re-enabled per request
             DrawROICirclesForMe(optResult, originalLocalCentroids); // 개인 공간 원 outline -- re-enabled per request
-            DrawHouseOutlinesForMe(optResult, originalLocalCentroids); // my own real freespace outline -- re-enabled per request, now draws only myType (see method)
 
             // The DE search itself only ever runs HERE, on whichever computer pressed
             // Z/trigger -- send the finished result to every other connected client so
@@ -385,55 +384,6 @@ public class LocalOptimizationRunner : MonoBehaviour
         }
     }
 
-    // My own house's actual room shape: the freespace polygon's exterior ring
-    // (the walls) AND every interior ring (a furniture cutout that doesn't touch
-    // the walls). Drawing only the exterior ring made this look identical to the
-    // whole room regardless of furniture -- furniture sitting away from the
-    // walls (the common case: a bed, a table) only ever shows up as an interior
-    // ring/hole in the polygon, never changes the exterior ring's shape at all,
-    // so skipping interior rings meant furniture was never visible here. Drawn
-    // IN ADDITION to my boundary/ROI circles above, not a replacement -- the
-    // circles are a fixed-radius stand-in for the individual area, this is what
-    // the room (minus furniture) actually looks like, so someone can visually
-    // confirm their own circles sit inside their own freespace, furniture and all.
-    //
-    // Deliberately draws ONLY myType, not all three houses -- per request, every
-    // client should see just their own room outline, not everyone else's (which
-    // was more visual clutter than help, and every client already sees their own
-    // boundary/ROI circles colored consistently via HouseOutlineColor(myType)).
-    void DrawHouseOutlinesForMe(DifferentialEvolutionOptimizer.Result optResult, CoordinateTransform.Point2D[] originalLocalCentroids)
-    {
-        foreach (GameObject obj in GameObject.FindObjectsOfType<GameObject>())
-        {
-            if (obj.name.Contains("houseOutline")) DestroyImmediate(obj);
-        }
-
-        var myFrame = CoordinateTransform.GetAbsoluteFrames(optResult)[myType];
-        var myLocalCentroid = originalLocalCentroids[myType];
-        var freespace = optResult.FinalFreespaces[myType];
-
-        DrawHouseOutlineRing(freespace.ExteriorRing.Coordinates, myFrame, myLocalCentroid, "houseOutline_mine_" + myType);
-        for (int h = 0; h < freespace.NumInteriorRings; h++)
-        {
-            DrawHouseOutlineRing(freespace.GetInteriorRingN(h).Coordinates, myFrame, myLocalCentroid, $"houseOutline_mine_{myType}_hole{h}");
-        }
-    }
-
-    void DrawHouseOutlineRing(Coordinate[] ring, CoordinateTransform.HouseFrame myFrame, CoordinateTransform.Point2D myLocalCentroid, string name)
-    {
-        var points = new Vector3[ring.Length];
-        for (int k = 0; k < ring.Length; k++)
-        {
-            var p = new CoordinateTransform.Point2D(ring[k].X, ring[k].Y);
-            var worldP = HouseArrangementApplier.TransformPointToMyView(p, myFrame, myLocalCentroid);
-            // above both the boundary circle (0.16f) and ROI circle (0.17f) so all three don't z-fight
-            points[k] = new Vector3((float)worldP.X, 0.18f, (float)worldP.Y);
-        }
-
-        var outlineObj = new GameObject(name);
-        DrawZone(outlineObj, points, HouseOutlineColor(myType), HouseOutlineWidth);
-    }
-
     // Feeds Arrange_Walkin.selectedZones -- each house's boundary-circle outline,
     // in my local view. Regions.cs reads this (via Arrange_Walkin) to build the
     // per-house zone shader inputs (zone1Vec4/zone2Vec4). Was missing before,
@@ -608,13 +558,9 @@ public class LocalOptimizationRunner : MonoBehaviour
 
     const int NumMovingHouses = NumHouses - 1;
 
-    // originalLocalCentroids(하우스당 2) + boundary(하우스당 3) + roi(하우스당 3)
-    // + moving-house 회전각(하우스-1개). 이 뒤에 집마다 freespace 외곽선 좌표가
-    // (점 개수 + 점개수*2 doubles로, 하우스당 가변 길이) 추가로 붙으므로 이 상수는
-    // 페이로드의 "고정 길이 앞부분"만 의미합니다 -- 전체 길이는 더 이상 고정이 아닙니다.
-    const int PayloadFixedDoubleCount = NumHouses * 2 + NumHouses * 3 + NumHouses * 3 + NumMovingHouses;
-
-    static readonly GeometryFactory Factory = NetTopologySuite.NtsGeometryServices.Instance.CreateGeometryFactory();
+    // originalLocalCentroids(하우스당 2) + freespace centroid(하우스당 2)
+    // + boundary(하우스당 3) + roi(하우스당 3) + moving-house 회전각(하우스-1개)
+    const int PayloadDoubleCount = NumHouses * 2 + NumHouses * 2 + NumHouses * 3 + NumHouses * 3 + NumMovingHouses;
 
     /// <summary>
     /// 방금 로컬에서 계산한 최적화 결과를 TransferManager를 통해 다른 모든 클라이언트에 전송합니다.
@@ -663,71 +609,39 @@ public class LocalOptimizationRunner : MonoBehaviour
     // 문화권(culture)에 따라 소수점 구분자가 달라질 수 있으므로 InvariantCulture 고정.
     string SerializeOptimizationResult(DifferentialEvolutionOptimizer.Result optResult, CoordinateTransform.Point2D[] originalLocalCentroids)
     {
-        var values = new List<double>(PayloadFixedDoubleCount + NumHouses * 16);
+        var values = new double[PayloadDoubleCount];
+        int idx = 0;
 
         for (int i = 0; i < NumHouses; i++)
         {
-            values.Add(originalLocalCentroids[i].X);
-            values.Add(originalLocalCentroids[i].Y);
+            values[idx++] = originalLocalCentroids[i].X;
+            values[idx++] = originalLocalCentroids[i].Y;
         }
         for (int i = 0; i < NumHouses; i++)
         {
-            values.Add(optResult.FinalBoundaries[i].CenterX);
-            values.Add(optResult.FinalBoundaries[i].CenterY);
-            values.Add(optResult.FinalBoundaries[i].Radius);
+            var c = optResult.FinalFreespaces[i].Centroid;
+            values[idx++] = c.X;
+            values[idx++] = c.Y;
         }
         for (int i = 0; i < NumHouses; i++)
         {
-            values.Add(optResult.FinalRois[i].CenterX);
-            values.Add(optResult.FinalRois[i].CenterY);
-            values.Add(optResult.FinalRois[i].Radius);
+            values[idx++] = optResult.FinalBoundaries[i].CenterX;
+            values[idx++] = optResult.FinalBoundaries[i].CenterY;
+            values[idx++] = optResult.FinalBoundaries[i].Radius;
+        }
+        for (int i = 0; i < NumHouses; i++)
+        {
+            values[idx++] = optResult.FinalRois[i].CenterX;
+            values[idx++] = optResult.FinalRois[i].CenterY;
+            values[idx++] = optResult.FinalRois[i].Radius;
         }
         for (int i = 0; i < NumMovingHouses; i++)
         {
-            values.Add(optResult.MovingStates[i].AngleDeg);
+            values[idx++] = optResult.MovingStates[i].AngleDeg;
         }
 
-        // Trailing variable-length section: each house's REAL freespace polygon --
-        // exterior ring (point count, then that many x,y pairs), THEN interior
-        // ring count, then each interior ring the same way (point count + x,y
-        // pairs). Previously only the polygon's centroid was sent (a circle
-        // placeholder was rebuilt from it on the receiving end), which was enough
-        // for CoordinateTransform (only ever reads ".Centroid") but not enough to
-        // draw the actual room shape. Interior rings specifically matter here --
-        // furniture that doesn't touch the walls shows up ONLY as an interior
-        // ring, never changes the exterior ring, so omitting them would make
-        // DrawHouseOutlinesForMe's outline look identical to the bare room
-        // regardless of furniture. Sending both lets every receiving client
-        // reconstruct the true polygon (holes and all) and see whether their own
-        // boundary/ROI circles really sit inside their own freespace, not just
-        // whoever pressed Z/M locally.
-        for (int i = 0; i < NumHouses; i++)
-        {
-            var freespace = optResult.FinalFreespaces[i];
-
-            Coordinate[] shell = freespace.ExteriorRing.Coordinates;
-            values.Add(shell.Length);
-            foreach (var c in shell)
-            {
-                values.Add(c.X);
-                values.Add(c.Y);
-            }
-
-            values.Add(freespace.NumInteriorRings);
-            for (int h = 0; h < freespace.NumInteriorRings; h++)
-            {
-                Coordinate[] hole = freespace.GetInteriorRingN(h).Coordinates;
-                values.Add(hole.Length);
-                foreach (var c in hole)
-                {
-                    values.Add(c.X);
-                    values.Add(c.Y);
-                }
-            }
-        }
-
-        var parts = new string[values.Count];
-        for (int i = 0; i < values.Count; i++)
+        var parts = new string[values.Length];
+        for (int i = 0; i < values.Length; i++)
             parts[i] = values[i].ToString("G17", CultureInfo.InvariantCulture);
         return string.Join(",", parts);
     }
@@ -735,9 +649,9 @@ public class LocalOptimizationRunner : MonoBehaviour
     /// <summary>
     /// 다른 클라이언트가 브로드캐스트한 최적화 결과를 받아 이 클라이언트에도 똑같이 적용합니다.
     /// TransferManager.RPC_SendZOptChunk가 모든 청크를 받으면 호출합니다.
-    /// FinalFreespaces는 이제 실제 freespace 폴리곤 외곽선 전체를 페이로드로 받아 복원합니다
-    /// (예전에는 중심점만 받아 그 위에 자리표시용 원을 만들었었습니다) -- 그래서 이 클라이언트도
-    /// DrawHouseOutlinesForMe로 자기 house의 진짜 방 모양을 그릴 수 있습니다.
+    /// FinalFreespaces는 이 경로 아래에서 오직 ".Centroid"로만 쓰이므로(CoordinateTransform.
+    /// GetAbsoluteFrames 참고), 실제 freespace 폴리곤 전체 대신 그 중심점 위에 만든 자리표시용
+    /// 원으로 대체합니다.
     /// </summary>
     public void ApplyReceivedOptimizationResult(string payload)
     {
@@ -764,9 +678,9 @@ public class LocalOptimizationRunner : MonoBehaviour
                 return;
             }
 
-            if (values.Length < PayloadFixedDoubleCount)
+            if (values.Length != PayloadDoubleCount)
             {
-                Debug.LogError($"[LocalOptimizationRunner] Received optimization payload has {values.Length} values, expected at least {PayloadFixedDoubleCount} -- ignoring.");
+                Debug.LogError($"[LocalOptimizationRunner] Received optimization payload has {values.Length} values, expected {PayloadDoubleCount} -- ignoring.");
                 return;
             }
 
@@ -774,6 +688,13 @@ public class LocalOptimizationRunner : MonoBehaviour
             var originalLocalCentroids = new CoordinateTransform.Point2D[NumHouses];
             for (int i = 0; i < NumHouses; i++)
                 originalLocalCentroids[i] = new CoordinateTransform.Point2D(values[idx++], values[idx++]);
+
+            var freespaces = new Polygon[NumHouses];
+            for (int i = 0; i < NumHouses; i++)
+            {
+                double cx = values[idx++], cy = values[idx++];
+                freespaces[i] = PolygonUtils.CreateCircle(cx, cy, 1.2); // 자리표시용 -- 위 XML 주석 참고
+            }
 
             var boundaries = new CircleShape[NumHouses];
             for (int i = 0; i < NumHouses; i++)
@@ -786,53 +707,6 @@ public class LocalOptimizationRunner : MonoBehaviour
             var movingStates = new DifferentialEvolutionOptimizer.TransformState[NumMovingHouses];
             for (int i = 0; i < NumMovingHouses; i++)
                 movingStates[i] = new DifferentialEvolutionOptimizer.TransformState { Dx = 0, Dy = 0, AngleDeg = values[idx++] };
-
-            // Trailing variable-length section -- see SerializeOptimizationResult's
-            // matching comment. Wrapped in its own try/catch: a version mismatch
-            // between clients (one running an older build without this section)
-            // would otherwise surface as an uncatchable index-out-of-range instead
-            // of a clean log line, same concern as the payload-parse try/catch above.
-            Polygon[] freespaces;
-            try
-            {
-                freespaces = new Polygon[NumHouses];
-                for (int i = 0; i < NumHouses; i++)
-                {
-                    LinearRing ReadRing(int forHouse)
-                    {
-                        int count = (int)System.Math.Round(values[idx++]);
-                        if (count < 4 || idx + count * 2 > values.Length)
-                            throw new System.FormatException($"invalid freespace ring point count ({count}) for house {forHouse}");
-
-                        var coords = new Coordinate[count];
-                        for (int k = 0; k < count; k++)
-                            coords[k] = new Coordinate(values[idx++], values[idx++]);
-
-                        return Factory.CreateLinearRing(coords);
-                    }
-
-                    LinearRing shell = ReadRing(i);
-
-                    if (idx >= values.Length)
-                        throw new System.FormatException($"payload ended before interior-ring count for house {i}");
-                    int holeCount = (int)System.Math.Round(values[idx++]);
-                    var holes = new LinearRing[holeCount];
-                    for (int h = 0; h < holeCount; h++)
-                        holes[h] = ReadRing(i);
-
-                    freespaces[i] = Factory.CreatePolygon(shell, holes);
-                }
-            }
-            catch (System.Exception e)
-            {
-                Debug.LogError($"[LocalOptimizationRunner] Failed to parse freespace polygon data from received optimization payload (mismatched build between clients?): {e}");
-                return;
-            }
-
-            if (idx != values.Length)
-            {
-                Debug.LogWarning($"[LocalOptimizationRunner] Received optimization payload had {values.Length - idx} unexpected trailing values -- payload format may be out of sync between clients (mismatched build?).");
-            }
 
             var optResult = new DifferentialEvolutionOptimizer.Result
             {
@@ -851,7 +725,6 @@ public class LocalOptimizationRunner : MonoBehaviour
             EnableRemoteAvatarRetargeting(); // see RunOptimizationAndApply's own call for why this is needed
             DrawBoundaryCirclesForMe(optResult, originalLocalCentroids);
             DrawROICirclesForMe(optResult, originalLocalCentroids);
-            DrawHouseOutlinesForMe(optResult, originalLocalCentroids); // my own real freespace outline -- now possible since the full ring is transmitted
             MarkTraverseZoneRan();
         }
         finally
