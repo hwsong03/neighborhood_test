@@ -47,20 +47,6 @@ public class TransferManager : NetworkBehaviour
     // related to mode shifts
     private bool walkin = false;
 
-    // Explicit "is B/위치전송(position-send) mode currently the active one"
-    // tracker for the B handler below. Named to avoid colliding with the
-    // separate, unrelated DistanceMaintainMode ("거리유지모드") -- both happen
-    // to be triggered by B and both involve "distance" in their English name,
-    // which was confusing two completely different systems together in
-    // conversation. `walkin`'s own default (false) happens to numerically
-    // equal "this mode is on", but that's just its field initializer, not a
-    // deliberate starting state -- toggling off `walkin` directly made the
-    // very FIRST B press of a session read as "already on, so turn off"
-    // instead of "turn on", confirmed live. This flag starts unambiguously
-    // off and only changes via A/B themselves, so B's first press always
-    // means "turn on".
-    private bool positionSendModeActive = false;
-
     // [OFFSET CALCULATOR] Now uses singleton: OffsetCalculator.Instance
 
 
@@ -91,19 +77,21 @@ public class TransferManager : NetworkBehaviour
             if (Input.GetKeyDown(KeyCode.A))
             {
                 Debug.Log("[TransferManager] Server pressed A key - triggering freeze mode");
-                positionSendModeActive = false; // keep in sync -- A always means "not 위치전송 mode"
                 SetModeAndBroadcast(true); // walkin = true (freeze mode)
             }
 
-            if (Input.GetKeyDown(KeyCode.B))
-            {
-                // Toggle based on OUR OWN explicit flag, not `walkin` directly -- see
-                // positionSendModeActive's field comment for why using `walkin` made the
-                // very first B press of a session read backwards.
-                positionSendModeActive = !positionSendModeActive;
-                Debug.Log($"[TransferManager] Server pressed B key - {(positionSendModeActive ? "enabling" : "disabling")} 위치전송 mode");
-                SetModeAndBroadcast(!positionSendModeActive);
-            }
+            // B used to also toggle this legacy "거리계산 mode" here
+            // (SetModeAndBroadcast(false) -> ApplyMode -> SceneSelection.OnModeB()
+            // -> ModeBCalculator), on every client, at the same time as the new
+            // DistanceMaintainMode feature now bound to the same key.
+            // ModeBCalculator directly moves OTHER players' actual avatar and
+            // house transforms to track MY local movement -- exactly what
+            // DistanceMaintainMode/CircleFollowAvatar is required not to do -- so
+            // the two were fighting each other every time B was pressed.
+            // Disconnected per request. SetModeAndBroadcast is now only ever
+            // called with true (freeze mode, above and from Arrange_WalkIn's Y-key
+            // reset), so ApplyMode's isWalkinMode==false branch (OnModeB /
+            // startSendingVec) is unreachable.
         }
 
         // Feed every house's zone-clipping marker (Regions.userPosVec4 -> shader
@@ -145,13 +133,12 @@ public class TransferManager : NetworkBehaviour
 
 
 
-        // if pressed, start sending
-        if (Input.GetKeyDown(KeyCode.B))
-        {
-            startSendingVec = true;
-        }
-
-
+        // This used to also set startSendingVec on plain B (unconditional, every
+        // client), part of the same legacy 거리계산 mode disconnected above --
+        // modeB can no longer become true, so the block below is unreachable
+        // dead code left in place rather than unwound (ApplyRoomMovement/pivot
+        // machinery it depends on is untouched, in case it's still needed by the
+        // Y-key pipeline elsewhere).
         if (startSendingVec && sceneSelection.GetComponent<SceneSelection>().modeB == true)
         {
             Vector3 sendingVec = sceneSelection.GetComponent<SceneSelection>().diffChange;
