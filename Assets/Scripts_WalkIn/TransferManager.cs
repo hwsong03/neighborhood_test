@@ -419,6 +419,19 @@ public class TransferManager : NetworkBehaviour
         }
     }
 
+    // ── 거리유지모드 (B, 최적화 이후) 전체 동기화 ───────────────────────────
+    // 참고: RpcSources.All이라 서버가 아닌 클라이언트가 눌러도 전체(자기 자신
+    //       포함)에 그대로 브로드캐스트됩니다 -- 거리유지모드는 특정 컴퓨터
+    //       하나만이 아니라 세션 전체에서 동시에 켜지고 꺼져야 하기 때문입니다.
+    [Rpc(RpcSources.All, RpcTargets.All)]
+    public void RPC_SetDistanceMaintainMode(bool active)
+    {
+        if (DistanceMaintainMode.Instance != null)
+        {
+            DistanceMaintainMode.Instance.ApplyNetworkedState(active);
+        }
+    }
+
     /// <summary>
     /// Transform a point from Python's optimized space to local Unity space.
     /// Same logic as OffsetCalculator.TransformToLocalSpace
