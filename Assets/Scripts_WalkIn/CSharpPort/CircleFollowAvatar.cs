@@ -30,6 +30,12 @@ public class CircleFollowAvatar : MonoBehaviour
     public Transform target;
     public float height;
 
+    // Which house this circle belongs to -- also used to feed the SAME live
+    // position into Regions' shader zone-clip marker for this house (see
+    // below), so the debug circle/outline and the actual visible-through-the-
+    // shader space of that house are always one set, never just the circle.
+    public int houseIndex = -1;
+
     DistanceMaintainMode mode;
 
     void LateUpdate()
@@ -43,5 +49,17 @@ public class CircleFollowAvatar : MonoBehaviour
         Vector3 pos = jointChest != null ? jointChest.position : target.position;
 
         transform.position = new Vector3(pos.x, height, pos.z);
+
+        // Regions.Update() re-broadcasts userPosVec4 to the shader every frame
+        // regardless, so writing it here just keeps this house's real visible
+        // area locked to the same position as its circle -- gated by the same
+        // mode.IsActive check as the circle itself, so it's frozen whenever the
+        // circle is (never active pre-optimization, never active for a house
+        // whose own avatar hasn't moved), unlike the old always-on feed that
+        // used to drag the visible area around unintentionally.
+        if (houseIndex >= 0 && Regions.Instance != null)
+        {
+            Regions.Instance.SetUserPosition(houseIndex, pos);
+        }
     }
 }
