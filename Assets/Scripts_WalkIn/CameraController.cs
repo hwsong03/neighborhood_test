@@ -60,12 +60,11 @@ public class CameraController : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        // Controller B button (right controller B / left controller Y, both map to
-        // OVRInput.Button.Two) and keyboard B toggle this panning/spectator view on
-        // and off -- both press-again-to-turn-off, same as any toggle. Reuses B
-        // (rather than a dedicated key) per request instead of the earlier
-        // dedicated P/controller-Two binding.
-        if (OVRInput.GetDown(OVRInput.Button.Two) || Input.GetKeyDown(KeyCode.B))
+        // Right controller B button specifically (NOT left Y -- OVRInput.Button.Two
+        // alone fires from either controller, so the controller mask is required to
+        // exclude left Y) and keyboard B toggle this panning/spectator view on and
+        // off -- press-again-to-turn-off, same as any toggle.
+        if (OVRInput.GetDown(OVRInput.Button.Two, OVRInput.Controller.RTouch) || Input.GetKeyDown(KeyCode.B))
         {
             cam.enabled = !cam.enabled;
             Debug.Log($"[CameraController] Panning view {(cam.enabled ? "enabled" : "disabled")}.");
