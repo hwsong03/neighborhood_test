@@ -37,12 +37,14 @@ public class LocalROI : MonoBehaviour
             bool optimizationHappened = GameObject.Find("traverseZone") != null
                                      || GameObject.Find("traverseZone_0") != null;
 
-            if (optimizationHappened && sceneSelection != null)
+            if (optimizationHappened)
             {
-                // After optimization: follow modeB
-                // B key → modeB = true → show
-                // Y/A key → modeB = false → hide
-                localROIRenderer.enabled = sceneSelection.modeB;
+                // After optimization: follow the new DistanceMaintainMode
+                // (거리유지모드), not the legacy SceneSelection.modeB -- modeB is
+                // permanently false now that B was disconnected from the old
+                // ModeBCalculator path (it directly moved other players' real
+                // avatar/house transforms, which conflicted with this feature).
+                localROIRenderer.enabled = DistanceMaintainMode.Instance != null && DistanceMaintainMode.Instance.IsActive;
             }
             else
             {
