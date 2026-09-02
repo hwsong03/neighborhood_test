@@ -82,8 +82,14 @@ public class TransferManager : NetworkBehaviour
 
             if (Input.GetKeyDown(KeyCode.B))
             {
-                Debug.Log("[TransferManager] Server pressed B key - triggering distance mode");
-                SetModeAndBroadcast(false); // walkin = false (위치전송 mode)
+                // Toggle, not "always turn on" -- this used to always call
+                // SetModeAndBroadcast(false), so once distance mode was on, pressing B
+                // again did nothing (walkin was already false, setting it to false again
+                // is a no-op). Flipping the CURRENT value instead means pressing B while
+                // it's already on now correctly switches back to freeze mode.
+                bool turningOn = walkin; // walkin==true means freeze/A mode is current, i.e. B mode is currently off
+                Debug.Log($"[TransferManager] Server pressed B key - {(turningOn ? "enabling" : "disabling")} distance mode");
+                SetModeAndBroadcast(!walkin);
             }
         }
 

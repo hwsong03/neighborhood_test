@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -121,8 +122,6 @@ public class LocalOptimizationRunner : MonoBehaviour
             // for this local run and for applying results broadcast from other clients.
             myType = ResolveMyType();
 
-            DisablePanningViewIfActive();
-
             Debug.Log("[LocalOptimizationRunner] Stage 1/6: resetting houses to origin...");
             ResetHousesToOrigin();
 
@@ -151,19 +150,6 @@ public class LocalOptimizationRunner : MonoBehaviour
                         maxIter: 50, popSizeMultiplier: 15, translationBound: 5.0, rotationBound: 30.0));
 
             Debug.Log($"[LocalOptimizationRunner] Stage 4/6: {algorithmName} search done, applying house/avatar placements...");
-
-            // Disabling panning back at the top of this method only stops it ONCE, at
-            // the instant Z/M fired -- the search above just spent anywhere from ~10s to
-            // over a minute on a background thread, during which every other
-            // MonoBehaviour's Update() (including CameraController's own panning-toggle
-            // check) kept running normally every frame. If panning got toggled back on
-            // at any point during that wait (a second press, or simply someone re-enabling
-            // it out of habit while waiting), nothing turned it back off again before the
-            // result below gets applied -- confirmed live: pressing Z a second time with
-            // panning already on left it on straight through to the end. Re-disable it
-            // here too, right as the result is actually about to become visible, so the
-            // final state doesn't depend on what happened to be pressed during the wait.
-            DisablePanningViewIfActive();
 
             ApplyHousePlacements(optResult, originalLocalCentroids);
             ApplyAvatarPositions(optResult, originalLocalCentroids);
@@ -201,6 +187,7 @@ public class LocalOptimizationRunner : MonoBehaviour
             DrawTraverseZoneForMe(optResult, originalLocalCentroids, visible: false);
             DrawBoundaryCirclesForMe(optResult, originalLocalCentroids); // bigger (1.2m) circle outline -- re-enabled per request
             DrawROICirclesForMe(optResult, originalLocalCentroids); // 개인 공간 원 outline -- re-enabled per request
+            ScheduleHideCircles();
 
             // The DE search itself only ever runs HERE, on whichever computer pressed
             // Z/trigger -- send the finished result to every other connected client so
@@ -273,10 +260,10 @@ public class LocalOptimizationRunner : MonoBehaviour
                 // Avatar root transform doesn't reflect real head/positional tracking --
                 // Meta Avatar SDK re-derives the root from the tracked rig's pose, not
                 // from where the player has actually walked to. SceneSelection.cs's X-key
-                // handler and CameraController.cs both read the Joint Chest/Joint Head
-                // bone instead for exactly this reason; do the same here so the
-                // boundary/ROI circles are centered on where the avatar is actually
-                // standing, for every house that has a real avatar, not just my own.
+                // handler reads the Joint Chest/Joint Head bone instead for exactly this
+                // reason; do the same here so the boundary/ROI circles are centered on
+                // where the avatar is actually standing, for every house that has a real
+                // avatar, not just my own.
                 Transform jointChest = AvatarJointHelper.FindJointChest(avatarForPos.transform);
                 Vector3 avatarPos = jointChest != null ? jointChest.position : avatarForPos.transform.position;
                 posX = avatarPos.x;
@@ -382,6 +369,30 @@ public class LocalOptimizationRunner : MonoBehaviour
             var circleObj = new GameObject(i == myType ? "roiCircle_mine_" + i : "roiCircle_" + i);
             DrawZone(circleObj, points, HouseOutlineColor(i));
         }
+    }
+
+    const float CircleHideDelaySeconds = 5f;
+    Coroutine hideCirclesRoutine;
+
+    // Boundary/ROI circles are meant as a brief post-optimization reference, not a
+    // permanent fixture -- clear them 5s after being (re)drawn. Restarts the timer
+    // on every call instead of stacking coroutines, so a second optimization run
+    // within that window doesn't have an earlier delayed hide destroy the newly
+    // drawn circles out from under it.
+    void ScheduleHideCircles()
+    {
+        if (hideCirclesRoutine != null) StopCoroutine(hideCirclesRoutine);
+        hideCirclesRoutine = StartCoroutine(HideCirclesAfterDelay());
+    }
+
+    IEnumerator HideCirclesAfterDelay()
+    {
+        yield return new WaitForSeconds(CircleHideDelaySeconds);
+        foreach (GameObject obj in GameObject.FindObjectsOfType<GameObject>())
+        {
+            if (obj.name.Contains("boundaryCircle") || obj.name.Contains("roiCircle")) Destroy(obj);
+        }
+        hideCirclesRoutine = null;
     }
 
     // Feeds Arrange_Walkin.selectedZones -- each house's boundary-circle outline,
@@ -665,7 +676,6 @@ public class LocalOptimizationRunner : MonoBehaviour
         try
         {
             myType = ResolveMyType();
-            DisablePanningViewIfActive();
 
             double[] values;
             try
@@ -725,6 +735,7 @@ public class LocalOptimizationRunner : MonoBehaviour
             EnableRemoteAvatarRetargeting(); // see RunOptimizationAndApply's own call for why this is needed
             DrawBoundaryCirclesForMe(optResult, originalLocalCentroids);
             DrawROICirclesForMe(optResult, originalLocalCentroids);
+            ScheduleHideCircles();
             MarkTraverseZoneRan();
         }
         finally
@@ -759,19 +770,6 @@ public class LocalOptimizationRunner : MonoBehaviour
             if (sceneSel != null) return sceneSel.type;
         }
         return myType;
-    }
-
-    // A Z/M optimization result only matters from the normal avatar viewpoint --
-    // called at the start of ApplyReceivedOptimizationResult (result received from
-    // another client, applied synchronously start-to-finish, only one call needed)
-    // and TWICE in RunOptimizationAndApply (local run): once at the very start for
-    // immediate feedback, and again right before the result is applied, since the
-    // background search in between can take over a minute, long enough for panning
-    // to get toggled back on mid-wait with nothing to catch it otherwise.
-    void DisablePanningViewIfActive()
-    {
-        var cameraController = FindFirstObjectByType<CameraController>();
-        if (cameraController != null) cameraController.DisablePanningView();
     }
 
     // Broadcasts "houseN pressed <input> (DE|DIRECT optimization)" to every
