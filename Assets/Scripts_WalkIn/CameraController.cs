@@ -35,6 +35,10 @@ public class CameraController : MonoBehaviour
 
     bool isFound = false;
 
+    // Read by CircleFollowAvatar -- boundary/ROI circles should only track their
+    // avatar WHILE the panning/spectator view is active, per request, not always.
+    public bool IsPanningActive => cam != null && cam.enabled;
+
 
 
     // Start is called before the first frame update
