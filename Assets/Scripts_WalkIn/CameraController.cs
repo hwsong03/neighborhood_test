@@ -71,6 +71,11 @@ public class CameraController : MonoBehaviour
         cam.fieldOfView = fieldOfView;
         //cam.orthographicSize = size;
 
+        // Panning starts OFF -- the scene's serialized default for this Camera
+        // component was enabled, so without this it was on the moment Play
+        // started, before anyone had touched B at all.
+        cam.enabled = false;
+
         this.transform.localPosition = initialPosition;
         this.transform.localEulerAngles = initialRotation;
 
