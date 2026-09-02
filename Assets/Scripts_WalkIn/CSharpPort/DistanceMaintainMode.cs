@@ -8,11 +8,18 @@ using UnityEngine;
 //
 // Owns its own B-key detection (same Simulator keyboard->controller relay
 // debounce CameraController needs, since this also checks both input sources)
-// and its own head-position tracking, so CircleFollowAvatar/
-// DistanceMaintainZoneOffset no longer need to go through CameraController at all.
+// and its own head-position tracking, so CircleFollowAvatar no longer needs to
+// go through CameraController at all.
+//
+// Deliberately drives ONLY the debug boundary/ROI circles (CircleFollowAvatar),
+// not the actual shader-driven zone-clipping geometry (Regions.userPosVec4) --
+// an earlier attempt also shifted that, which reshaped how much of another
+// house's REAL floor/walls render as visible, not just a debug line. Per
+// request, another house's real space must never change because of my
+// movement -- only the debug indicator of where it is, in my own view, may.
 //
 // Auto-installs itself (RuntimeInitializeOnLoadMethod, same convention as
-// DistanceMaintainZoneOffset.cs/HeadsetHUD.cs) so no scene wiring is needed.
+// HeadsetHUD.cs) so no scene wiring is needed.
 public class DistanceMaintainMode : MonoBehaviour
 {
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
