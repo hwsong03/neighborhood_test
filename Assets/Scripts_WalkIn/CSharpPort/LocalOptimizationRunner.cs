@@ -835,6 +835,13 @@ public class LocalOptimizationRunner : MonoBehaviour
     {
         var cameraController = FindFirstObjectByType<CameraController>();
         if (cameraController != null) cameraController.DisablePanningView();
+
+        // 거리유지모드 (CircleFollowAvatar/DistanceMaintainZoneOffset) is a separate
+        // system from the spectator camera above, but the same reasoning applies:
+        // a Z/M result should be seen with houses/zones at their true optimized
+        // target, not shifted by whatever distance-maintain offset was active.
+        var distanceMode = FindFirstObjectByType<DistanceMaintainMode>();
+        if (distanceMode != null) distanceMode.Disable();
     }
 
     // Broadcasts "houseN pressed <input> (DE|DIRECT optimization)" to every

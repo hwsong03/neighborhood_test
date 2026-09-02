@@ -2,10 +2,12 @@ using UnityEngine;
 
 // Keeps a boundary/ROI circle centered on its house's avatar every frame
 // (X/Z only, fixed height -- never rotates with the avatar's facing), but
-// ONLY while the panning/spectator view (CameraController) is active. The
+// ONLY while DistanceMaintainMode (거리유지모드, toggled by B) is active. The
 // rest of the time the circle stays wherever it was originally drawn (the
 // optimizer's fixed target) -- per request, this following behavior is
-// specifically a panning-view thing, not an always-on one.
+// specifically a 거리유지모드 thing, not an always-on one, and has nothing to
+// do with the separate spectator camera (CameraController) despite both
+// happening to be bound to the same B key.
 //
 // `target` is the avatar ROOT, but the root transform does not reflect the
 // avatar's real visual position -- same reason BuildOptimizationInputs/
@@ -27,23 +29,23 @@ public class CircleFollowAvatar : MonoBehaviour
     // meaningless applied to my own circle (already centered on me at all times).
     public bool isMine;
 
-    CameraController panningView;
+    DistanceMaintainMode mode;
 
     void LateUpdate()
     {
         if (target == null) return;
 
-        if (panningView == null) panningView = FindFirstObjectByType<CameraController>();
-        if (panningView == null || !panningView.IsPanningActive) return;
+        if (mode == null) mode = FindFirstObjectByType<DistanceMaintainMode>();
+        if (mode == null || !mode.IsActive) return;
 
         Transform jointChest = AvatarJointHelper.FindJointChest(target);
         Vector3 pos = jointChest != null ? jointChest.position : target.position;
 
-        // Per request: while panning, an OTHER house's circle should move exactly
-        // as far as I have (X/Z only, no rotation), so our relative distance stays
-        // constant -- on top of wherever its own target (a real avatar, or the
-        // static Characters dummy for an empty house) already is.
-        if (!isMine && panningView.TryGetPanningDeltaXZ(out Vector2 delta))
+        // Per request: while 거리유지모드 is on, an OTHER house's circle should
+        // move exactly as far as I have (X/Z only, no rotation), so our relative
+        // distance stays constant -- on top of wherever its own target (a real
+        // avatar, or the static Characters dummy for an empty house) already is.
+        if (!isMine && mode.TryGetDeltaXZ(out Vector2 delta))
         {
             pos.x += delta.x;
             pos.z += delta.y;
