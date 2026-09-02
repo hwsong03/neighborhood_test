@@ -443,6 +443,7 @@ public class LocalOptimizationRunner : MonoBehaviour
         var follow = circleObj.AddComponent<CircleFollowAvatar>();
         follow.target = avatarTransform;
         follow.height = height;
+        follow.isMine = (houseIndex == myType);
     }
 
     // Feeds Arrange_Walkin.selectedZones -- each house's boundary-circle outline,

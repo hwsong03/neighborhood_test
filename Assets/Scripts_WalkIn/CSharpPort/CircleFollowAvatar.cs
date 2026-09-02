@@ -20,6 +20,13 @@ public class CircleFollowAvatar : MonoBehaviour
     public Transform target;
     public float height;
 
+    // True only for the local player's own house's circle. That one already
+    // tracks ME directly (target == my own avatar), so it must NOT also get the
+    // "shift by how far I've moved" offset below -- that offset exists so an
+    // OTHER house's circle keeps a constant distance from me as I walk, which is
+    // meaningless applied to my own circle (already centered on me at all times).
+    public bool isMine;
+
     CameraController panningView;
 
     void LateUpdate()
@@ -31,6 +38,17 @@ public class CircleFollowAvatar : MonoBehaviour
 
         Transform jointChest = AvatarJointHelper.FindJointChest(target);
         Vector3 pos = jointChest != null ? jointChest.position : target.position;
+
+        // Per request: while panning, an OTHER house's circle should move exactly
+        // as far as I have (X/Z only, no rotation), so our relative distance stays
+        // constant -- on top of wherever its own target (a real avatar, or the
+        // static Characters dummy for an empty house) already is.
+        if (!isMine && panningView.TryGetPanningDeltaXZ(out Vector2 delta))
+        {
+            pos.x += delta.x;
+            pos.z += delta.y;
+        }
+
         transform.position = new Vector3(pos.x, height, pos.z);
     }
 }

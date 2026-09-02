@@ -39,6 +39,26 @@ public class CameraController : MonoBehaviour
     // avatar WHILE the panning/spectator view is active, per request, not always.
     public bool IsPanningActive => cam != null && cam.enabled;
 
+    // Where my own head was the moment panning most recently turned on (X/Z
+    // only) -- lets other-house zone visuals (CircleFollowAvatar, PanningWorldOffset)
+    // shift by exactly how far I've since moved, keeping their distance from me
+    // constant, without applying any rotation. Captured lazily (not right at the
+    // toggle) since localAvatarNeck may not be resolved yet at that exact instant;
+    // cleared on every toggle (on AND off) so re-enabling always starts a fresh
+    // reference point instead of jumping by whatever happened while panning was off.
+    Vector3? myHeadPosAtPanningStart = null;
+
+    public bool TryGetPanningDeltaXZ(out Vector2 deltaXZ)
+    {
+        deltaXZ = Vector2.zero;
+        if (!IsPanningActive || localAvatarNeck == null || !myHeadPosAtPanningStart.HasValue) return false;
+
+        Vector3 cur = localAvatarNeck.transform.position;
+        Vector3 start = myHeadPosAtPanningStart.Value;
+        deltaXZ = new Vector2(cur.x - start.x, cur.z - start.z);
+        return true;
+    }
+
 
 
     // Start is called before the first frame update
@@ -85,6 +105,7 @@ public class CameraController : MonoBehaviour
         {
             lastToggleTime = Time.unscaledTime;
             cam.enabled = !cam.enabled;
+            myHeadPosAtPanningStart = null; // reset on every toggle -- see field comment
             Debug.Log($"[CameraController] Panning view {(cam.enabled ? "enabled" : "disabled")}.");
         }
         if (!cam.enabled) return;
@@ -111,6 +132,8 @@ public class CameraController : MonoBehaviour
         else
         {
             Vector3 neckPos = localAvatarNeck.transform.position;
+
+            if (!myHeadPosAtPanningStart.HasValue) myHeadPosAtPanningStart = neckPos;
 
             // Get neck's Y rotation as quaternion and apply offset
             Quaternion neckYRotation = Quaternion.Euler(0, localAvatarNeck.transform.eulerAngles.y, 0);
@@ -141,6 +164,7 @@ public class CameraController : MonoBehaviour
         if (cam != null && cam.enabled)
         {
             cam.enabled = false;
+            myHeadPosAtPanningStart = null; // same reset as the normal toggle path
             Debug.Log("[CameraController] Panning view disabled (forced off for optimization).");
         }
     }
