@@ -340,17 +340,26 @@ public class LocalOptimizationRunner : MonoBehaviour
 
         for (int i = 0; i < NumHouses; i++)
         {
+            var centerWorld = HouseArrangementApplier.TransformPointToMyView(
+                new CoordinateTransform.Point2D(optResult.FinalBoundaries[i].CenterX, optResult.FinalBoundaries[i].CenterY),
+                myFrame, myLocalCentroid);
+
+            // Points stored LOCAL to the circle's own center (not world-space) so the
+            // whole ring can be moved just by moving circleObj.transform -- see
+            // CircleFollowAvatar, which re-centers it on the avatar every frame.
             Coordinate[] ring = optResult.FinalBoundaries[i].ToPolygon().ExteriorRing.Coordinates;
-            var points = new Vector3[ring.Length];
+            var localPoints = new Vector3[ring.Length];
             for (int k = 0; k < ring.Length; k++)
             {
                 var p = new CoordinateTransform.Point2D(ring[k].X, ring[k].Y);
                 var worldP = HouseArrangementApplier.TransformPointToMyView(p, myFrame, myLocalCentroid);
-                points[k] = new Vector3((float)worldP.X, 0.16f, (float)worldP.Y);
+                localPoints[k] = new Vector3((float)(worldP.X - centerWorld.X), 0f, (float)(worldP.Y - centerWorld.Y));
             }
 
             var circleObj = new GameObject(i == myType ? "boundaryCircle_mine_" + i : "boundaryCircle_" + i);
-            DrawZone(circleObj, points, HouseOutlineColor(i));
+            circleObj.transform.position = new Vector3((float)centerWorld.X, 0.16f, (float)centerWorld.Y);
+            DrawZone(circleObj, localPoints, HouseOutlineColor(i), useWorldSpace: false);
+            AttachCircleFollow(circleObj, i, 0.16f);
         }
     }
 
@@ -369,19 +378,64 @@ public class LocalOptimizationRunner : MonoBehaviour
 
         for (int i = 0; i < NumHouses; i++)
         {
+            var centerWorld = HouseArrangementApplier.TransformPointToMyView(
+                new CoordinateTransform.Point2D(optResult.FinalRois[i].CenterX, optResult.FinalRois[i].CenterY),
+                myFrame, myLocalCentroid);
+
             Coordinate[] ring = optResult.FinalRois[i].ToPolygon().ExteriorRing.Coordinates;
-            var points = new Vector3[ring.Length];
+            var localPoints = new Vector3[ring.Length];
             for (int k = 0; k < ring.Length; k++)
             {
                 var p = new CoordinateTransform.Point2D(ring[k].X, ring[k].Y);
                 var worldP = HouseArrangementApplier.TransformPointToMyView(p, myFrame, myLocalCentroid);
-                // slightly above the boundary circle (0.16f) so the two don't z-fight
-                points[k] = new Vector3((float)worldP.X, 0.17f, (float)worldP.Y);
+                localPoints[k] = new Vector3((float)(worldP.X - centerWorld.X), 0f, (float)(worldP.Y - centerWorld.Y));
             }
 
             var circleObj = new GameObject(i == myType ? "roiCircle_mine_" + i : "roiCircle_" + i);
-            DrawZone(circleObj, points, HouseOutlineColor(i));
+            // slightly above the boundary circle (0.16f) so the two don't z-fight
+            circleObj.transform.position = new Vector3((float)centerWorld.X, 0.17f, (float)centerWorld.Y);
+            DrawZone(circleObj, localPoints, HouseOutlineColor(i), useWorldSpace: false);
+            AttachCircleFollow(circleObj, i, 0.17f);
         }
+    }
+
+    // Resolves which avatar (root transform) currently represents house i from
+    // this client's perspective -- same lookup convention used throughout this
+    // file (BuildOptimizationInputs/ApplyAvatarPositions): LocalAvatar for my own
+    // house, RemoteAvatar/RemoteAvatar1 for a connected other house, or the
+    // Characters placeholder (which doesn't move on its own) for an empty one.
+    Transform ResolveAvatarTransformForHouse(int i)
+    {
+        if (i == myType)
+        {
+            var local = GameObject.Find("LocalAvatar");
+            return local != null ? local.transform : null;
+        }
+
+        ResolveRemoteIndices(myType, out int remoteIndex, out int remote1Index);
+        if (i == remoteIndex)
+        {
+            var remote = GameObject.Find("RemoteAvatar");
+            return remote != null ? remote.transform : null;
+        }
+        if (i == remote1Index)
+        {
+            var remote1 = GameObject.Find("RemoteAvatar1");
+            return remote1 != null ? remote1.transform : null;
+        }
+
+        var characters = GameObject.Find("Characters");
+        return characters != null && i < characters.transform.childCount ? characters.transform.GetChild(i) : null;
+    }
+
+    void AttachCircleFollow(GameObject circleObj, int houseIndex, float height)
+    {
+        var avatarTransform = ResolveAvatarTransformForHouse(houseIndex);
+        if (avatarTransform == null) return;
+
+        var follow = circleObj.AddComponent<CircleFollowAvatar>();
+        follow.target = avatarTransform;
+        follow.height = height;
     }
 
     const float CircleHideDelaySeconds = 5f;
@@ -557,12 +611,13 @@ public class LocalOptimizationRunner : MonoBehaviour
         }
     }
 
-    void DrawZone(GameObject obj, Vector3[] points, Color color = default, float width = 0.015f, bool visible = true)
+    void DrawZone(GameObject obj, Vector3[] points, Color color = default, float width = 0.015f, bool visible = true, bool useWorldSpace = true)
     {
         if (color == default) color = Color.green;
 
         LineRenderer lr = obj.AddComponent<LineRenderer>();
         lr.enabled = visible;
+        lr.useWorldSpace = useWorldSpace;
         lr.material = new Material(Shader.Find("Sprites/Default"));
         lr.startColor = color;
         lr.endColor = color;
