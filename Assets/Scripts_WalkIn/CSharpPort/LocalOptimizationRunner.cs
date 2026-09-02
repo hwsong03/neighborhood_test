@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -200,7 +199,6 @@ public class LocalOptimizationRunner : MonoBehaviour
             DrawTraverseZoneForMe(optResult, originalLocalCentroids, visible: false);
             DrawBoundaryCirclesForMe(optResult, originalLocalCentroids); // bigger (1.2m) circle outline -- re-enabled per request
             DrawROICirclesForMe(optResult, originalLocalCentroids); // 개인 공간 원 outline -- re-enabled per request
-            ScheduleHideCircles();
 
             // The DE search itself only ever runs HERE, on whichever computer pressed
             // Z/trigger -- send the finished result to every other connected client so
@@ -436,30 +434,6 @@ public class LocalOptimizationRunner : MonoBehaviour
         var follow = circleObj.AddComponent<CircleFollowAvatar>();
         follow.target = avatarTransform;
         follow.height = height;
-    }
-
-    const float CircleHideDelaySeconds = 5f;
-    Coroutine hideCirclesRoutine;
-
-    // Boundary/ROI circles are meant as a brief post-optimization reference, not a
-    // permanent fixture -- clear them 5s after being (re)drawn. Restarts the timer
-    // on every call instead of stacking coroutines, so a second optimization run
-    // within that window doesn't have an earlier delayed hide destroy the newly
-    // drawn circles out from under it.
-    void ScheduleHideCircles()
-    {
-        if (hideCirclesRoutine != null) StopCoroutine(hideCirclesRoutine);
-        hideCirclesRoutine = StartCoroutine(HideCirclesAfterDelay());
-    }
-
-    IEnumerator HideCirclesAfterDelay()
-    {
-        yield return new WaitForSeconds(CircleHideDelaySeconds);
-        foreach (GameObject obj in GameObject.FindObjectsOfType<GameObject>())
-        {
-            if (obj.name.Contains("boundaryCircle") || obj.name.Contains("roiCircle")) Destroy(obj);
-        }
-        hideCirclesRoutine = null;
     }
 
     // Feeds Arrange_Walkin.selectedZones -- each house's boundary-circle outline,
@@ -804,7 +778,6 @@ public class LocalOptimizationRunner : MonoBehaviour
             EnableRemoteAvatarRetargeting(); // see RunOptimizationAndApply's own call for why this is needed
             DrawBoundaryCirclesForMe(optResult, originalLocalCentroids);
             DrawROICirclesForMe(optResult, originalLocalCentroids);
-            ScheduleHideCircles();
             MarkTraverseZoneRan();
         }
         finally
