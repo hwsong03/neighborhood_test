@@ -122,6 +122,8 @@ public class LocalOptimizationRunner : MonoBehaviour
             // for this local run and for applying results broadcast from other clients.
             myType = ResolveMyType();
 
+            DisablePanningViewIfActive();
+
             Debug.Log("[LocalOptimizationRunner] Stage 1/6: resetting houses to origin...");
             ResetHousesToOrigin();
 
@@ -150,6 +152,17 @@ public class LocalOptimizationRunner : MonoBehaviour
                         maxIter: 50, popSizeMultiplier: 15, translationBound: 5.0, rotationBound: 30.0));
 
             Debug.Log($"[LocalOptimizationRunner] Stage 4/6: {algorithmName} search done, applying house/avatar placements...");
+
+            // Disabling panning back at the top of this method only stops it ONCE, at
+            // the instant Z/M fired -- the search above just spent anywhere from ~10s to
+            // over a minute on a background thread, during which every other
+            // MonoBehaviour's Update() (including CameraController's own panning-toggle
+            // check) kept running normally every frame. If panning got toggled back on
+            // at any point during that wait, nothing turned it back off again before the
+            // result below gets applied. Re-disable it here too, right as the result is
+            // actually about to become visible, so the final state doesn't depend on
+            // what happened to be pressed during the wait.
+            DisablePanningViewIfActive();
 
             ApplyHousePlacements(optResult, originalLocalCentroids);
             ApplyAvatarPositions(optResult, originalLocalCentroids);
@@ -260,10 +273,10 @@ public class LocalOptimizationRunner : MonoBehaviour
                 // Avatar root transform doesn't reflect real head/positional tracking --
                 // Meta Avatar SDK re-derives the root from the tracked rig's pose, not
                 // from where the player has actually walked to. SceneSelection.cs's X-key
-                // handler reads the Joint Chest/Joint Head bone instead for exactly this
-                // reason; do the same here so the boundary/ROI circles are centered on
-                // where the avatar is actually standing, for every house that has a real
-                // avatar, not just my own.
+                // handler and CameraController.cs both read the Joint Chest/Joint Head
+                // bone instead for exactly this reason; do the same here so the
+                // boundary/ROI circles are centered on where the avatar is actually
+                // standing, for every house that has a real avatar, not just my own.
                 Transform jointChest = AvatarJointHelper.FindJointChest(avatarForPos.transform);
                 Vector3 avatarPos = jointChest != null ? jointChest.position : avatarForPos.transform.position;
                 posX = avatarPos.x;
@@ -676,6 +689,7 @@ public class LocalOptimizationRunner : MonoBehaviour
         try
         {
             myType = ResolveMyType();
+            DisablePanningViewIfActive();
 
             double[] values;
             try
@@ -770,6 +784,19 @@ public class LocalOptimizationRunner : MonoBehaviour
             if (sceneSel != null) return sceneSel.type;
         }
         return myType;
+    }
+
+    // A Z/M optimization result only matters from the normal avatar viewpoint --
+    // called at the start of ApplyReceivedOptimizationResult (result received from
+    // another client, applied synchronously start-to-finish, only one call needed)
+    // and TWICE in RunOptimizationAndApply (local run): once at the very start for
+    // immediate feedback, and again right before the result is applied, since the
+    // background search in between can take over a minute, long enough for panning
+    // to get toggled back on mid-wait with nothing to catch it otherwise.
+    void DisablePanningViewIfActive()
+    {
+        var cameraController = FindFirstObjectByType<CameraController>();
+        if (cameraController != null) cameraController.DisablePanningView();
     }
 
     // Broadcasts "houseN pressed <input> (DE|DIRECT optimization)" to every

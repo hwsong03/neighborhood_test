@@ -88,20 +88,18 @@ public class HeadsetHUD : MonoBehaviour
         // than the 3 lines of text needed, leaving a large empty gap above them since
         // LowerLeft anchors the block to the box's bottom edge. Shrinking the box AND
         // centering the text closes that gap from both directions.
-        // Box height tuned to the number of lines actually shown (2, since the
-        // panning toggle line was removed along with the feature itself -- see
-        // CameraController.cs), same reasoning as the earlier legend-sizing pass:
-        // a box taller than the text needs leaves an empty gap above/below it.
-        var legendCanvas = CreateWorldSpaceCanvas("HUD_Legend", new Vector3(LegendOffsetX, LegendOffsetY, Distance), 0.001f, new Vector2(900, 140));
+        var legendCanvas = CreateWorldSpaceCanvas("HUD_Legend", new Vector3(LegendOffsetX, LegendOffsetY, Distance), 0.001f, new Vector2(900, 190));
         CreateBackgroundPanel(legendCanvas.transform);
         var legendText = CreateText(legendCanvas.transform, TextAnchor.MiddleLeft, 30);
         // Controller-only -- this is only ever seen inside the headset, so the
         // keyboard-only equivalents (Z/M, and the server-only A/B freeze/distance
         // mode toggle, which has no controller mapping at all -- see TransferManager.
-        // Update()) are left off.
+        // Update()) are left off. Panning's B is listed since it DOES have a
+        // controller mapping (OVRInput.Button.Two -- right B / left Y).
         legendText.text =
             "Right Trigger: run DE optimization\n" +
-            "Left Trigger: run DIRECT optimization";
+            "Left Trigger: run DIRECT optimization\n" +
+            "B: toggle panning view";
 
         var notifCanvas = CreateWorldSpaceCanvas("HUD_Notification", new Vector3(0f, 0.18f, Distance), 0.0012f, new Vector2(850, 220));
         notificationRoot = notifCanvas.gameObject;
