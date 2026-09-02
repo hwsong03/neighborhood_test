@@ -61,6 +61,18 @@ public class CameraController : MonoBehaviour
         rotationFilter = new OneEuroFilter<Quaternion>(filterFrequency, filterMinCutoff, filterBeta, filterDCutoff);
     }
 
+    // Meta XR Simulator relays a keyboard press into a simulated controller press
+    // too, one frame apart -- so a single physical B tap can satisfy
+    // OVRInput.GetDown(...) and Input.GetKeyDown(KeyCode.B) on two DIFFERENT
+    // frames, toggling twice (enabled immediately followed by disabled) instead
+    // of once. TransferManager's B handler (keyboard-only) doesn't have this
+    // problem; this one checks both sources, so it needs its own debounce.
+    // Same class of issue as LocalOptimizationRunner's TriggerHoldSeconds, but a
+    // short cooldown here instead of a hold-to-confirm, since this is a toggle
+    // meant to respond to a single tap, not a held button.
+    const float ToggleCooldownSeconds = 0.3f;
+    float lastToggleTime = -999f;
+
     // Update is called once per frame
     void Update()
     {
@@ -68,8 +80,10 @@ public class CameraController : MonoBehaviour
         // alone fires from either controller, so the controller mask is required to
         // exclude left Y) and keyboard B toggle this panning/spectator view on and
         // off -- press-again-to-turn-off, same as any toggle.
-        if (OVRInput.GetDown(OVRInput.Button.Two, OVRInput.Controller.RTouch) || Input.GetKeyDown(KeyCode.B))
+        bool togglePressed = OVRInput.GetDown(OVRInput.Button.Two, OVRInput.Controller.RTouch) || Input.GetKeyDown(KeyCode.B);
+        if (togglePressed && Time.unscaledTime - lastToggleTime >= ToggleCooldownSeconds)
         {
+            lastToggleTime = Time.unscaledTime;
             cam.enabled = !cam.enabled;
             Debug.Log($"[CameraController] Panning view {(cam.enabled ? "enabled" : "disabled")}.");
         }
