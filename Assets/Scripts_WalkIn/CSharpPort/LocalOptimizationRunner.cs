@@ -407,21 +407,30 @@ public class LocalOptimizationRunner : MonoBehaviour
         if (i == myType)
         {
             var local = GameObject.Find("LocalAvatar");
-            return local != null ? local.transform : null;
+            if (local != null) return local.transform;
+        }
+        else
+        {
+            ResolveRemoteIndices(myType, out int remoteIndex, out int remote1Index);
+            if (i == remoteIndex)
+            {
+                var remote = GameObject.Find("RemoteAvatar");
+                if (remote != null) return remote.transform;
+            }
+            else if (i == remote1Index)
+            {
+                var remote1 = GameObject.Find("RemoteAvatar1");
+                if (remote1 != null) return remote1.transform;
+            }
         }
 
-        ResolveRemoteIndices(myType, out int remoteIndex, out int remote1Index);
-        if (i == remoteIndex)
-        {
-            var remote = GameObject.Find("RemoteAvatar");
-            return remote != null ? remote.transform : null;
-        }
-        if (i == remote1Index)
-        {
-            var remote1 = GameObject.Find("RemoteAvatar1");
-            return remote1 != null ? remote1.transform : null;
-        }
-
+        // Falls through here whenever house i has no real avatar spawned (every
+        // index always matches myType/remoteIndex/remote1Index for NumHouses==3,
+        // so this used to be unreachable dead code -- the early `return null`
+        // above skipped straight past it instead of ever landing here). Characters[i]
+        // is already moved to this exact house's boundary/ROI center by
+        // ApplyAvatarPositions() on every optimization run, so it doubles as a
+        // stand-in "avatar" position for an empty house.
         var characters = GameObject.Find("Characters");
         return characters != null && i < characters.transform.childCount ? characters.transform.GetChild(i) : null;
     }
