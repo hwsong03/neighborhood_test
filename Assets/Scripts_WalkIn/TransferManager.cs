@@ -47,6 +47,16 @@ public class TransferManager : NetworkBehaviour
     // related to mode shifts
     private bool walkin = false;
 
+    // Explicit "is B/distance mode currently the active one" tracker for the B
+    // handler below. `walkin`'s own default (false) happens to numerically equal
+    // "distance mode is on", but that's just its field initializer, not a
+    // deliberate starting state -- toggling off `walkin` directly made the very
+    // FIRST B press of a session read as "already on, so turn off" instead of
+    // "turn on", confirmed live (console showed "disabling distance mode" on a
+    // single first press). This flag starts unambiguously off and only changes
+    // via A/B themselves, so B's first press always means "turn on".
+    private bool distanceModeActive = false;
+
     // [OFFSET CALCULATOR] Now uses singleton: OffsetCalculator.Instance
 
 
@@ -77,19 +87,18 @@ public class TransferManager : NetworkBehaviour
             if (Input.GetKeyDown(KeyCode.A))
             {
                 Debug.Log("[TransferManager] Server pressed A key - triggering freeze mode");
+                distanceModeActive = false; // keep in sync -- A always means "not distance mode"
                 SetModeAndBroadcast(true); // walkin = true (freeze mode)
             }
 
             if (Input.GetKeyDown(KeyCode.B))
             {
-                // Toggle, not "always turn on" -- this used to always call
-                // SetModeAndBroadcast(false), so once distance mode was on, pressing B
-                // again did nothing (walkin was already false, setting it to false again
-                // is a no-op). Flipping the CURRENT value instead means pressing B while
-                // it's already on now correctly switches back to freeze mode.
-                bool turningOn = walkin; // walkin==true means freeze/A mode is current, i.e. B mode is currently off
-                Debug.Log($"[TransferManager] Server pressed B key - {(turningOn ? "enabling" : "disabling")} distance mode");
-                SetModeAndBroadcast(!walkin);
+                // Toggle based on OUR OWN explicit flag, not `walkin` directly -- see
+                // distanceModeActive's field comment for why using `walkin` made the
+                // very first B press of a session read backwards.
+                distanceModeActive = !distanceModeActive;
+                Debug.Log($"[TransferManager] Server pressed B key - {(distanceModeActive ? "enabling" : "disabling")} distance mode");
+                SetModeAndBroadcast(!distanceModeActive);
             }
         }
 
