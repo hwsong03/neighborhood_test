@@ -444,6 +444,7 @@ public class LocalOptimizationRunner : MonoBehaviour
         follow.target = avatarTransform;
         follow.height = height;
         follow.houseIndex = houseIndex;
+        follow.isMine = (houseIndex == myType);
     }
 
     // Feeds Arrange_Walkin.selectedZones -- each house's boundary-circle outline,

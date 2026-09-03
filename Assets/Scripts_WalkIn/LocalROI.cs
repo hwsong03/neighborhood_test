@@ -32,26 +32,11 @@ public class LocalROI : MonoBehaviour
     {
         if (localROIRenderer != null)
         {
-            // Check if optimization has happened by looking for traverseZone objects
-            // (created after Y key on server, or after RPC on client)
-            bool optimizationHappened = GameObject.Find("traverseZone") != null
-                                     || GameObject.Find("traverseZone_0") != null;
-
-            if (optimizationHappened)
-            {
-                // After optimization: follow the new DistanceMaintainMode
-                // (거리유지모드), not the legacy SceneSelection.modeB -- modeB is
-                // permanently false now that B was disconnected from the old
-                // ModeBCalculator path (it directly moved other players' real
-                // avatar/house transforms, which conflicted with this feature).
-                localROIRenderer.enabled = DistanceMaintainMode.Instance != null && DistanceMaintainMode.Instance.IsActive;
-            }
-            else
-            {
-                // TEMP: was "always show" before optimization -- hidden for the
-                // 2-headset test along with the other debug outlines (LocalOptimizationRunner.cs).
-                localROIRenderer.enabled = false;
-            }
+            // Not part of the requested distance-maintain visuals (only the
+            // roi/boundary circles LocalOptimizationRunner draws for the OTHER
+            // houses are) -- showing this produced an extra, unrequested
+            // outline on the local player's own ROI, so it stays hidden.
+            localROIRenderer.enabled = false;
         }
 
         if (LocalAvatarRoot == null)

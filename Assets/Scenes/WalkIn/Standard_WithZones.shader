@@ -37,7 +37,7 @@
         LOD 200
 
         CGPROGRAM
-        #pragma surface surf Standard fullforwardshadows
+        #pragma surface surf Standard fullforwardshadows vertex:vert
         #pragma target 3.0
 
         sampler2D _MainTex;
@@ -50,6 +50,7 @@
         {
             float2 uv_MainTex;
             float3 worldPos;
+            float3 origWorldPos;
         };
 
         half _Glossiness;
@@ -68,6 +69,27 @@
         float4 _Users[10];
         int _WhichRegion;
         int _BaseRegion;
+
+        // Per-client-only rendering placement shift (xz), fed by
+        // DistanceMaintainMode from how far the LOCAL viewer has moved since
+        // 거리유지모드 turned on. Applied to Remote-zone geometry only (see vert
+        // below), and NEVER affects _Users or calculateZoneClip -- so it moves
+        // WHERE this house's revealed cutout renders on this one screen,
+        // without changing WHAT is revealed (that is still decided purely by
+        // that house's own real avatar position in _Users) or anything
+        // networked/visible on another client.
+        float4 _LocalOffset;
+
+        void vert(inout appdata_full v, out Input o)
+        {
+            UNITY_INITIALIZE_OUTPUT(Input, o);
+            o.origWorldPos = mul(unity_ObjectToWorld, v.vertex).xyz;
+
+            if (_ZoneMode == 2) // RemoteZone only -- never shift my own house's rendering
+            {
+                v.vertex.xyz += mul((float3x3)unity_WorldToObject, float3(_LocalOffset.x, 0, _LocalOffset.z));
+            }
+        }
 
         bool isInsideCircle(float3 vertexPoint, int userNum)
         {
@@ -140,8 +162,9 @@
 
         void surf (Input IN, inout SurfaceOutputStandard o)
         {
-            // Zone clipping check
-            if (calculateZoneClip(IN.worldPos))
+            // Zone clipping check -- origWorldPos (pre-shift) so which part of
+            // the house is revealed never depends on the local placement shift.
+            if (calculateZoneClip(IN.origWorldPos))
             {
                 clip(-1);
                 return;

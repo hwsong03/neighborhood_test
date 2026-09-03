@@ -2,21 +2,19 @@ using UnityEngine;
 
 // "거리유지모드" -- toggled by B, synced across every computer in the session:
 // pressing B on ANY house's computer turns it on/off everywhere at once (via
-// TransferManager's Fusion RPC channel), not just locally. Completely
-// independent of CameraController's spectator camera (Display 2) -- has
-// nothing to do with any camera, it's purely "are the ROI/boundary circles
-// currently following their houses' avatars."
+// TransferManager's Fusion RPC channel), not just locally.
 //
-// Drives ONLY the debug boundary/ROI circles (CircleFollowAvatar), never the
-// actual shader-driven zone-clipping geometry (Regions.userPosVec4) -- another
-// house's real rendered space must never change because of this feature.
-//
-// CircleFollowAvatar needs no "how far have I moved" delta: each house's
-// circle just continuously tracks that house's OWN avatar's real (Fusion
-// network-synced) position while this mode is active. Avatar position is the
-// only thing that matters -- the circle has no position logic of its own, and
-// my own movement never affects another house's circle directly; it only
-// looks that way when it's really that house's own avatar moving.
+// While active, tracks how far MY OWN avatar has moved (x/z only) since the
+// mode turned on, and feeds that single delta to two places so they always
+// move together as one set:
+//  - CircleFollowAvatar, which offsets OTHER houses' ROI/boundary rings by it
+//    on top of that house's own real avatar position.
+//  - the _LocalOffset shader global (see Standard_WithZones.shader), which
+//    carries the whole rendered Remote-zone cutout by the same amount.
+// In both cases the thing being shown/revealed is still decided entirely by
+// that house's own real avatar position -- this delta only ever changes WHERE
+// it renders on THIS client's screen, never what's revealed or anything
+// networked, so another house's own view of their own space is untouched.
 //
 // Auto-installs itself (RuntimeInitializeOnLoadMethod, same convention as
 // HeadsetHUD.cs) so no scene wiring is needed.
@@ -54,6 +52,12 @@ public class DistanceMaintainMode : MonoBehaviour
     const float ToggleCooldownSeconds = 0.3f;
     float lastToggleTime = -999f;
 
+    GameObject localAvatar;
+    Transform jointHead;
+    Vector3? myHeadPosAtModeStart;
+
+    static readonly int LocalOffsetId = Shader.PropertyToID("_LocalOffset");
+
     void Update()
     {
         bool togglePressed = OVRInput.GetDown(OVRInput.Button.Two, OVRInput.Controller.RTouch) || Input.GetKeyDown(KeyCode.B);
@@ -61,6 +65,24 @@ public class DistanceMaintainMode : MonoBehaviour
         {
             lastToggleTime = Time.unscaledTime;
             RequestToggle();
+        }
+
+        if (!IsActive) return;
+
+        if (jointHead == null)
+        {
+            if (localAvatar == null) localAvatar = GameObject.Find("LocalAvatar");
+            if (localAvatar != null) jointHead = AvatarJointHelper.FindJointHead(localAvatar.transform);
+        }
+
+        if (jointHead != null)
+        {
+            if (!myHeadPosAtModeStart.HasValue) myHeadPosAtModeStart = jointHead.position;
+
+            if (TryGetDeltaXZ(out Vector2 delta))
+            {
+                Shader.SetGlobalVector(LocalOffsetId, new Vector4(delta.x, 0f, delta.y, 0f));
+            }
         }
     }
 
@@ -86,17 +108,28 @@ public class DistanceMaintainMode : MonoBehaviour
     {
         if (IsActive == active) return;
         IsActive = active;
+        if (active) myHeadPosAtModeStart = null; // fresh reference point every time this turns on
         Debug.Log($"[DistanceMaintainMode] {(IsActive ? "enabled" : "disabled")}.");
     }
 
     // Called by LocalOptimizationRunner right before applying a Z/M optimization
-    // result -- same reasoning as CameraController.DisablePanningView(): a
-    // result should be seen with houses/circles at their true optimized target,
-    // not shifted by whatever distance-maintain state was active. This runs
-    // locally on every client as a side effect of each of them independently
-    // applying the same optimization event, so no RPC is needed here.
+    // result -- a result should be seen with houses/circles at their true
+    // optimized target, not shifted by whatever distance-maintain state was
+    // active. Runs locally on every client as a side effect of each of them
+    // independently applying the same optimization event, so no RPC is needed.
     public void Disable()
     {
         ApplyNetworkedState(false);
+    }
+
+    public bool TryGetDeltaXZ(out Vector2 deltaXZ)
+    {
+        deltaXZ = Vector2.zero;
+        if (!IsActive || jointHead == null || !myHeadPosAtModeStart.HasValue) return false;
+
+        Vector3 cur = jointHead.position;
+        Vector3 start = myHeadPosAtModeStart.Value;
+        deltaXZ = new Vector2(cur.x - start.x, cur.z - start.z);
+        return true;
     }
 }
