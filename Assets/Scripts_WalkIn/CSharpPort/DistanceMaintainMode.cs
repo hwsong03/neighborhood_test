@@ -129,8 +129,21 @@ public class DistanceMaintainMode : MonoBehaviour
     // optimized target, not shifted by whatever distance-maintain state was
     // active. Runs locally on every client as a side effect of each of them
     // independently applying the same optimization event, so no RPC is needed.
+    //
+    // Also force-zeros the shader's _LocalOffset here, not just IsActive:
+    // Standard_WithZones.shader applies whatever _LocalOffset currently holds
+    // to Remote-zone geometry unconditionally, with no idea whether this mode
+    // is even active. IsActive going false only stops the RING (via
+    // CircleFollowAvatar, gated on IsActive) from moving -- it does nothing to
+    // the shader global itself, which otherwise keeps sitting at its last
+    // value from the PREVIOUS distance-maintain session. Confirmed live: a
+    // second optimization correctly redrew the rings at the fresh result, but
+    // the actual shader-revealed geometry was still shifted by the leftover
+    // offset from before, visibly detached from both the new rings and the
+    // rest of that house's own room.
     public void Disable()
     {
+        Shader.SetGlobalVector(LocalOffsetId, Vector4.zero);
         ApplyNetworkedState(false);
     }
 
