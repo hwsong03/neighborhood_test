@@ -17,6 +17,18 @@ using UnityEngine;
 //    only), so the ring and the actual revealed geometry always move
 //    together as one set, without ever changing what is revealed or
 //    touching another house's own view of their own space.
+//
+// For isMine (my own house's circle, target == my own avatar): the ring's
+// own transform still tracks me directly below, same as always, but it must
+// NEVER feed Regions.SetUserPosition. _Users[myType] also acts as a THIRD
+// competing point inside Standard_WithZones.shader's own Voronoi tie-break
+// for house1/house2's Remote content (calculateZoneClip's ZoneMode==2 branch,
+// which this feature must never touch) -- confirmed live: continuously
+// feeding it from my real, moving position let my own presence "steal"
+// slices of house1's/house2's ROI purely by walking near their true spot,
+// even though their own _Users entries never moved. _Users[myType] must stay
+// exactly what LocalOptimizationRunner/Arrange_Walkin set it to once, at
+// optimization time -- frozen, like it always was before this feature existed.
 public class CircleFollowAvatar : MonoBehaviour
 {
     public Transform target;
@@ -42,7 +54,8 @@ public class CircleFollowAvatar : MonoBehaviour
         Vector3 anchorPos = jointChest != null ? jointChest.position : target.position;
 
         // Content anchor -- always that house's own real avatar position.
-        if (houseIndex >= 0 && Regions.Instance != null)
+        // Never for isMine -- see class comment above.
+        if (!isMine && houseIndex >= 0 && Regions.Instance != null)
         {
             Regions.Instance.SetUserPosition(houseIndex, anchorPos);
         }
