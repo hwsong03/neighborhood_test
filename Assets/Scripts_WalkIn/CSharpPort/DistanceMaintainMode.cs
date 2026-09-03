@@ -27,6 +27,18 @@ public class DistanceMaintainMode : MonoBehaviour
     {
         var go = new GameObject("DistanceMaintainMode");
         go.AddComponent<DistanceMaintainMode>();
+
+        // _LocalOffset is a raw Shader.SetGlobalVector value -- it lives at
+        // the graphics-device level, not the scene, so it is NOT reset just
+        // because Play was stopped and started again (confirmed live: a
+        // stale value from a manual test earlier in the same Editor session
+        // was still sitting there on a fresh Play run where this mode had
+        // never even been turned on yet, visibly detaching the debug rings
+        // from the shader-revealed geometry they must always match). Force
+        // it to zero exactly once here, the moment this component installs,
+        // so a real session always starts from a known-clean value no matter
+        // what any previous run left behind.
+        Shader.SetGlobalVector(LocalOffsetId, Vector4.zero);
     }
 
     void Awake()

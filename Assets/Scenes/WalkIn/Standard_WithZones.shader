@@ -103,26 +103,52 @@
             return dist <= _ZoneRadius;
         }
 
-        // Same as isInsideCircle, but for a house OTHER than me (userNum !=
-        // _BaseRegion), tested against where that house's circle is actually
-        // DISPLAYED on this screen right now (_Users[userNum] + _LocalOffset --
-        // see vert() above), not its true/un-shifted position. Used only by my
-        // OWN (Local) yield decision below: without this, my own floor keeps
-        // yielding at the old true spot (leaving a hole once that house's
-        // content has visually moved away) while not yielding at the new
-        // shifted spot (drawing over that house's now-relocated content
-        // instead of letting it show). Remote content-selection itself (which
-        // vertices of another house get revealed at all) never uses this --
-        // that must stay anchored to the true position regardless of my delta.
-        bool isInsideCircleShifted(float3 vertexPoint, int userNum)
+        // Pure Lp-norm Voronoi over the true (un-shifted) _Users positions --
+        // exactly the same computation ZoneMode==2 always used, extracted so
+        // LocalZone below can reuse it too.
+        int closestZoneTrue(float3 worldPos)
         {
-            float4 userPos = _Users[userNum];
-            float ox = (userNum != _BaseRegion) ? _LocalOffset.x : 0;
-            float oz = (userNum != _BaseRegion) ? _LocalOffset.z : 0;
-            float dx = vertexPoint.x - (userPos.x + ox);
-            float dz = vertexPoint.z - (userPos.z + oz);
-            float dist = sqrt(dx * dx + dz * dz);
-            return dist <= _ZoneRadius;
+            float minDist = 1e8;
+            int closest = 0;
+            for (int i = 0; i < _Length; i++)
+            {
+                float dist = pow(
+                    pow(abs(worldPos.x - _Users[i].x), _P) +
+                    pow(abs(worldPos.z - _Users[i].z), _P),
+                    1.0 / _P
+                );
+                if (dist < minDist)
+                {
+                    minDist = dist;
+                    closest = i;
+                }
+            }
+            return closest;
+        }
+
+        // True iff house k's own real, un-shifted avatar position actually
+        // reveals content at TRUE world position worldPos -- exactly
+        // ZoneMode==2's own reveal test (content selection must never depend
+        // on the local viewer's own placement shift). Extracted so LocalZone
+        // below can ask the identical question -- "will Remote actually
+        // render something here" -- instead of approximating it with a plain
+        // circle test, which gets it wrong wherever house k's true circle
+        // partially overlaps ANOTHER house (including mine): only part of
+        // that circle is really house k's own content to begin with, and a
+        // plain radius check doesn't know that.
+        bool remoteReveals(float3 worldPos, int k)
+        {
+            if (!isInsideCircle(worldPos, k))
+                return false;
+
+            for (int j = 0; j < _Length; j++)
+            {
+                if (j != k && isInsideCircle(worldPos, j))
+                {
+                    if (closestZoneTrue(worldPos) != k) return false;
+                }
+            }
+            return true;
         }
 
         bool calculateZoneClip(float3 worldPos)
@@ -132,76 +158,28 @@
 
             if (_ZoneMode == 1) // LocalZone
             {
-                // Shift-aware Voronoi: same Lp-norm comparison as below, but
-                // every OTHER house's reference point is displaced by
-                // _LocalOffset first, matching where its content is actually
-                // being rendered on this screen right now.
-                float minDistLocal = 1e8;
-                int closestZoneLocal = _BaseRegion;
-                for (int i = 0; i < _Length; i++)
+                // My own floor yields here iff SOME other house's true,
+                // un-shifted content is actually what's being displayed at
+                // this spot right now -- i.e. remoteReveals() is true for the
+                // TRUE position this display position maps back to (undo the
+                // same _LocalOffset shift vert() applied when placing that
+                // content). This keeps Local's yield mask and what Remote
+                // actually renders identical by construction, everywhere,
+                // instead of the two independently approximating "who owns
+                // this circle" and occasionally disagreeing.
+                float3 truePos = worldPos - float3(_LocalOffset.x, 0, _LocalOffset.z);
+                for (int k = 0; k < _Length; k++)
                 {
-                    float ox = (i != _BaseRegion) ? _LocalOffset.x : 0;
-                    float oz = (i != _BaseRegion) ? _LocalOffset.z : 0;
-                    float dist = pow(
-                        pow(abs(worldPos.x - (_Users[i].x + ox)), _P) +
-                        pow(abs(worldPos.z - (_Users[i].z + oz)), _P),
-                        1.0 / _P
-                    );
-                    if (dist < minDistLocal)
-                    {
-                        minDistLocal = dist;
-                        closestZoneLocal = i;
-                    }
+                    if (k == _BaseRegion) continue;
+                    if (remoteReveals(truePos, k)) return true;
                 }
-
-                // Check overlap with any remote circle (as displayed, shifted)
-                for (int j = 0; j < _Length; j++)
-                {
-                    if (j != _BaseRegion && isInsideCircleShifted(worldPos, j))
-                    {
-                        // Overlap: use Voronoi to decide
-                        return (closestZoneLocal != _BaseRegion);
-                    }
-                }
-                return false; // Inside local, no overlap -> render
+                return false;
             }
-            else if (_ZoneMode == 2) // RemoteZone
+            else if (_ZoneMode == 2) // RemoteZone -- unchanged behavior, now via the shared helper above
             {
-                float minDist = 1e8;
-                int closestZone = 0;
-
-                // Find closest zone using Lp-norm distance -- true positions
-                // only, exactly as before; content selection must never react
-                // to the local viewer's own placement shift.
-                for (int i = 0; i < _Length; i++)
-                {
-                    float dist = pow(
-                        pow(abs(worldPos.x - _Users[i].x), _P) +
-                        pow(abs(worldPos.z - _Users[i].z), _P),
-                        1.0 / _P
-                    );
-                    if (dist < minDist)
-                    {
-                        minDist = dist;
-                        closestZone = i;
-                    }
-                }
-                bool isInTargetCircle = isInsideCircle(worldPos, _WhichRegion);
-                if (!isInTargetCircle)
-                    return true; // Outside target circle -> clip
-
-                // Check overlap with other circles (including local)
-                for (int j = 0; j < _Length; j++)
-                {
-                    if (j != _WhichRegion && isInsideCircle(worldPos, j))
-                    {
-                        // Overlap: use Voronoi to decide
-                        return (closestZone != _WhichRegion);
-                    }
-                }
-                return false; // Inside target, no overlap -> render
+                return !remoteReveals(worldPos, _WhichRegion);
             }
-            
+
             return false;
         }
 
