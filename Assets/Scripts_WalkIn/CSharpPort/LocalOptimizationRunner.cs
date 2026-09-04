@@ -222,12 +222,36 @@ public class LocalOptimizationRunner : MonoBehaviour
     // first") -- so that reading each house's avatar/character position in
     // BuildOptimizationInputs() gives a value relative to that house's own
     // un-transformed local frame, not wherever a PREVIOUS run happened to leave it.
+    //
+    // That comment states the intent, but only ever held for houses[i] itself --
+    // Characters[i] (the dummy avatar stand-in BuildOptimizationInputs falls
+    // back to whenever house i has neither a local nor a remote avatar) is a
+    // static, one-time value written by the PREVIOUS run's ApplyAvatarPositions
+    // as a WORLD position (house i's own optimized rotation+translation baked
+    // in). A real avatar (local or remote) doesn't have this problem -- it's
+    // continuously live-tracked in absolute space regardless of any house
+    // transform -- but Characters[i] has no such live backing, so re-reading
+    // its raw value after houses reset to identity silently reinterpreted a
+    // WORLD position as house i's own LOCAL one. Confirmed live: the
+    // avatar/house mismatch grew with each successive run. Convert it into
+    // house i's CURRENT (about-to-be-reset) local space FIRST, so the same
+    // real position it already represents survives the reset intact instead
+    // of being fixed to a stale default -- required per spec: after moving in
+    // distance-maintain mode, an avatar must stay exactly where it moved to,
+    // in its own house's terms.
     void ResetHousesToOrigin()
     {
         if (arrangeWalkin == null) return;
 
+        var characters = GameObject.Find("Characters");
         for (int i = 0; i < arrangeWalkin.houses.Count; i++)
         {
+            if (characters != null && i < characters.transform.childCount)
+            {
+                var c = characters.transform.GetChild(i);
+                c.position = arrangeWalkin.houses[i].transform.InverseTransformPoint(c.position);
+            }
+
             arrangeWalkin.houses[i].transform.position = Vector3.zero;
             arrangeWalkin.houses[i].transform.rotation = Quaternion.identity;
         }
