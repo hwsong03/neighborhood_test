@@ -794,6 +794,22 @@ public class SceneSelection : MonoBehaviour
 
         // bool shouldLog = (lateUpdateCounter++ % 60 == 0);  // Log every second
 
+        // 거리유지모드 (DistanceMaintainMode, toggled by B): while active, carry the
+        // SAME per-client visual delta this feature already applies to the shader
+        // (_LocalOffset) and the debug ROI/boundary rings onto each remote avatar's
+        // rendered position too, so the avatar itself is always inside its own
+        // circle/shader content instead of the three drifting apart. Purely a local
+        // render-position nudge on top of the existing per-frame recompute below --
+        // never touches remoteHouseTransform/remote1HouseTransform (the real
+        // assigned house placement) or anything networked. Zero whenever the mode
+        // is inactive (TryGetDeltaXZ itself returns zero then), matching the
+        // circles' own frozen-when-off behavior.
+        Vector2 distanceMaintainDelta = Vector2.zero;
+        if (DistanceMaintainMode.Instance != null)
+        {
+            DistanceMaintainMode.Instance.TryGetDeltaXZ(out distanceMaintainDelta);
+        }
+
         GameObject remote1 = GameObject.Find("RemoteAvatar1");
         GameObject remote = GameObject.Find("RemoteAvatar");
 
@@ -817,10 +833,11 @@ public class SceneSelection : MonoBehaviour
             Vector3 rotatedPos = remote1HouseTransform.rotation * networkPos;
             // Calculate rotation offset (how much rotation moved the point)
             Vector3 rotationOffset = rotatedPos - networkPos;
-            // Translation offset is the house position
+            // Translation offset is the house position, plus this client's own
+            // 거리유지모드 delta (see above) -- zero unless that mode is active.
             Vector3 translationOffset = remote1HouseTransform.position;
             // Apply both offsets using += to root (child4 moves with root)
-            remote1.transform.position += new Vector3(rotationOffset.x + translationOffset.x, 0, rotationOffset.z + translationOffset.z);
+            remote1.transform.position += new Vector3(rotationOffset.x + translationOffset.x + distanceMaintainDelta.x, 0, rotationOffset.z + translationOffset.z + distanceMaintainDelta.y);
 
             // Save jointChest's correct world position BEFORE rotating root
             Vector3 jointChestCorrectPos = (jointChest != null) ? jointChest.position : remote1.transform.position;
@@ -853,8 +870,9 @@ public class SceneSelection : MonoBehaviour
 
             Vector3 rotatedPos = remoteHouseTransform.rotation * networkPos;
             Vector3 rotationOffset = rotatedPos - networkPos;
+            // House position, plus this client's own 거리유지모드 delta (see above).
             Vector3 translationOffset = remoteHouseTransform.position;
-            remote.transform.position += new Vector3(rotationOffset.x + translationOffset.x, 0, rotationOffset.z + translationOffset.z);
+            remote.transform.position += new Vector3(rotationOffset.x + translationOffset.x + distanceMaintainDelta.x, 0, rotationOffset.z + translationOffset.z + distanceMaintainDelta.y);
 
             // Save jointChest's correct world position BEFORE rotating root
             Vector3 jointChestCorrectPos = (jointChest != null) ? jointChest.position : remote.transform.position;
