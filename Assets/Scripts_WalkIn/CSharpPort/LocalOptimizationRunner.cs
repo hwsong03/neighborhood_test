@@ -777,6 +777,22 @@ public class LocalOptimizationRunner : MonoBehaviour
             for (int i = 0; i < NumHouses; i++)
                 originalLocalCentroids[i] = new CoordinateTransform.Point2D(values[idx++], values[idx++]);
 
+            // The sender computed originalLocalCentroids[myType] from our avatar as seen
+            // remotely (NetworkTransform) -- which can differ from our LocalAvatar's actual
+            // chest position. Since this centroid is the translation offset used in
+            // TransformPointToMyView for EVERY house's worldPos, even a small error shifts
+            // ALL avatars/circles off-center (confirmed: all avatars thrown outside ROI on
+            // house2 when receiving house0's result). Override with a fresh local computation
+            // using our own live tracking so worldPos values are in our correct local space.
+            try
+            {
+                originalLocalCentroids[myType] = RecomputeMyLocalCentroid();
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"[LocalOptimizationRunner] Could not re-derive own local centroid: {e.Message}. Using broadcast value -- avatars may be offset.");
+            }
+
             var freespaces = new Polygon[NumHouses];
             for (int i = 0; i < NumHouses; i++)
             {
@@ -847,6 +863,27 @@ public class LocalOptimizationRunner : MonoBehaviour
             if (sceneSel != null) return sceneSel.type;
         }
         return myType;
+    }
+
+    // Re-derive originalLocalCentroids[myType] from our own LocalAvatar's live chest
+    // position. Used in ApplyReceivedOptimizationResult to replace the broadcast value
+    // (which was computed by the sender using our avatar's networked position and may
+    // differ from our local tracking).
+    CoordinateTransform.Point2D RecomputeMyLocalCentroid()
+    {
+        double posX = 0, posZ = 0;
+        var localAvatar = GameObject.Find("LocalAvatar");
+        if (localAvatar != null)
+        {
+            Transform jointChest = AvatarJointHelper.FindJointChest(localAvatar.transform);
+            Vector3 avatarPos = jointChest != null ? jointChest.position : localAvatar.transform.position;
+            posX = avatarPos.x;
+            posZ = avatarPos.z;
+        }
+        HouseData house = HouseLoader.LoadHouseByIndex(myType);
+        var avatarBoundary = PolygonUtils.CreateCircle(posX, posZ, 1.2);
+        var fsResult = FreespaceCalculator.Compute(house, RoomId, avatarBoundary);
+        return new CoordinateTransform.Point2D(fsResult.OriginalCentroidX, fsResult.OriginalCentroidY);
     }
 
     // A Z/M optimization result only matters from the normal avatar viewpoint --
