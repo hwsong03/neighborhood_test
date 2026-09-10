@@ -1377,6 +1377,7 @@ GameObject:
   m_Component:
   - component: {fileID: 754242499}
   - component: {fileID: 754242500}
+  - component: {fileID: 754242501}
   m_Layer: 0
   m_Name: Arrange
   m_TagString: Untagged
@@ -1434,6 +1435,19 @@ MonoBehaviour:
   lineColor: {r: 0, g: 1, b: 0, a: 1}
   transfer: {fileID: 425157382}
   isServer: 1
+--- !u!114 &754242501
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 754242498}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f150d24d4f0406b45b00eb2a9ad97396, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  arrangeWalkin: {fileID: 754242500}
 --- !u!1 &808384571
 GameObject:
   m_ObjectHideFlags: 0
@@ -1517,6 +1531,19 @@ Camera:
   m_OcclusionCulling: 1
   m_StereoConvergence: 10
   m_StereoSeparation: 0.022
+--- !u!1001 &819234567
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications: []
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 8d8b50752af2ea347aab6ca42fb61c76, type: 3}
 --- !u!1 &821416563
 GameObject:
   m_ObjectHideFlags: 0
@@ -3150,18 +3177,6 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 8df18b67fef00d04ab1c88511893c518, type: 3}
---- !u!1001 &819234567
-PrefabInstance:
-  m_ObjectHideFlags: 0
-  serializedVersion: 2
-  m_Modification:
-    m_TransformParent: {fileID: 0}
-    m_Modifications: []
-    m_RemovedComponents: []
-    m_RemovedGameObjects: []
-    m_AddedGameObjects: []
-    m_AddedComponents: []
-  m_SourcePrefab: {fileID: 100100000, guid: 8d8b50752af2ea347aab6ca42fb61c76, type: 3}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
