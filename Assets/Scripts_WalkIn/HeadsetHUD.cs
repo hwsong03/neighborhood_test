@@ -99,7 +99,7 @@ public class HeadsetHUD : MonoBehaviour
         legendText.text =
             "Right Trigger: run DE optimization\n" +
             "Left Trigger: run DIRECT optimization\n" +
-            "B: toggle panning view";
+            "B: toggle panning mode";
 
         var notifCanvas = CreateWorldSpaceCanvas("HUD_Notification", new Vector3(0f, 0.18f, Distance), 0.0012f, new Vector2(850, 220));
         notificationRoot = notifCanvas.gameObject;

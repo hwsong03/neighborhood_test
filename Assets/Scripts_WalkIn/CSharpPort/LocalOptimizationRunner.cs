@@ -858,13 +858,7 @@ public class LocalOptimizationRunner : MonoBehaviour
     // to get toggled back on mid-wait with nothing to catch it otherwise.
     void DisablePanningViewIfActive()
     {
-        var cameraController = FindFirstObjectByType<CameraController>();
-        if (cameraController != null) cameraController.DisablePanningView();
-
-        // 거리유지모드 (CircleFollowAvatar) is a separate system from the spectator
-        // camera above, but the same reasoning applies: a Z/M result should be
-        // seen with houses/circles at their true optimized target, not shifted
-        // by whatever distance-maintain offset was active.
+        // Z/M 결과는 최적화된 실제 위치 기준으로 봐야 하므로, 거리유지모드(패닝모드)를 끈다.
         var distanceMode = FindFirstObjectByType<DistanceMaintainMode>();
         if (distanceMode != null) distanceMode.Disable();
     }

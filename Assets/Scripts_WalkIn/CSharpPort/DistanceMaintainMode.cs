@@ -1,20 +1,17 @@
 using UnityEngine;
 
-// "거리유지모드" -- toggled by B, synced across every computer in the session:
+// "거리유지모드 (패닝모드)" -- toggled by B, synced across every computer in the session:
 // pressing B on ANY house's computer turns it on/off everywhere at once (via
 // TransferManager's Fusion RPC channel), not just locally.
 //
 // While active, tracks how far MY OWN avatar has moved (x/z only) since the
-// mode turned on, and feeds that single delta to two places so they always
-// move together as one set:
-//  - CircleFollowAvatar, which offsets OTHER houses' ROI/boundary rings by it
-//    on top of that house's own real avatar position.
-//  - the _LocalOffset shader global (see Standard_WithZones.shader), which
-//    carries the whole rendered Remote-zone cutout by the same amount.
-// In both cases the thing being shown/revealed is still decided entirely by
-// that house's own real avatar position -- this delta only ever changes WHERE
-// it renders on THIS client's screen, never what's revealed or anything
-// networked, so another house's own view of their own space is untouched.
+// mode turned on, and moves OTHER houses' transforms by that same delta every
+// frame. Because avatars are positioned relative to their house transform
+// (via SceneSelection.LateUpdate), and ROI/boundary circles track those avatars
+// (via CircleFollowAvatar), and the shader anchor follows the avatar's real
+// position (via Regions.SetUserPosition in CircleFollowAvatar), all three --
+// house, avatar, circles, shader zone -- move together as one glued set.
+// My own house is never touched.
 //
 // Auto-installs itself (RuntimeInitializeOnLoadMethod, same convention as
 // HeadsetHUD.cs) so no scene wiring is needed.
@@ -28,16 +25,7 @@ public class DistanceMaintainMode : MonoBehaviour
         var go = new GameObject("DistanceMaintainMode");
         go.AddComponent<DistanceMaintainMode>();
 
-        // _LocalOffset is a raw Shader.SetGlobalVector value -- it lives at
-        // the graphics-device level, not the scene, so it is NOT reset just
-        // because Play was stopped and started again (confirmed live: a
-        // stale value from a manual test earlier in the same Editor session
-        // was still sitting there on a fresh Play run where this mode had
-        // never even been turned on yet, visibly detaching the debug rings
-        // from the shader-revealed geometry they must always match). Force
-        // it to zero exactly once here, the moment this component installs,
-        // so a real session always starts from a known-clean value no matter
-        // what any previous run left behind.
+        // Safety: zero out any leftover _LocalOffset from a previous Editor session.
         Shader.SetGlobalVector(LocalOffsetId, Vector4.zero);
     }
 
@@ -68,6 +56,10 @@ public class DistanceMaintainMode : MonoBehaviour
     Transform jointHead;
     Vector3? myHeadPosAtModeStart;
 
+    Arrange_Walkin arrangeWalkin;
+    int myType = -1;
+    Vector3[] houseBaselinePositions;
+
     static readonly int LocalOffsetId = Shader.PropertyToID("_LocalOffset");
 
     void Update()
@@ -92,15 +84,55 @@ public class DistanceMaintainMode : MonoBehaviour
             if (!myHeadPosAtModeStart.HasValue) myHeadPosAtModeStart = jointHead.position;
 
             if (TryGetDeltaXZ(out Vector2 delta))
-            {
-                Shader.SetGlobalVector(LocalOffsetId, new Vector4(delta.x, 0f, delta.y, 0f));
-            }
+                ApplyDeltaToOtherHouses(delta);
         }
     }
 
-    // Broadcasts the new state to every client (including this one) via
-    // TransferManager's Fusion RPC channel -- RpcSources.All lets ANY client,
-    // not just the server, trigger it, same pattern as RPC_BroadcastZOptResult.
+    void EnsureArrangeWalkin()
+    {
+        if (arrangeWalkin != null) return;
+        arrangeWalkin = FindFirstObjectByType<Arrange_Walkin>();
+    }
+
+    int ResolveMyType()
+    {
+        EnsureArrangeWalkin();
+        if (arrangeWalkin == null) return 0;
+        var sceneSel = arrangeWalkin.sceneSelection?.GetComponent<SceneSelection>();
+        return sceneSel != null ? sceneSel.type : 0;
+    }
+
+    void CaptureHouseBaselines()
+    {
+        EnsureArrangeWalkin();
+        if (arrangeWalkin == null) return;
+        myType = ResolveMyType();
+        houseBaselinePositions = new Vector3[arrangeWalkin.houses.Count];
+        for (int i = 0; i < arrangeWalkin.houses.Count; i++)
+            houseBaselinePositions[i] = arrangeWalkin.houses[i].transform.position;
+    }
+
+    void ApplyDeltaToOtherHouses(Vector2 delta)
+    {
+        if (arrangeWalkin == null || houseBaselinePositions == null) return;
+        for (int i = 0; i < arrangeWalkin.houses.Count && i < houseBaselinePositions.Length; i++)
+        {
+            if (i == myType || arrangeWalkin.houses[i] == null) continue;
+            arrangeWalkin.houses[i].transform.position = houseBaselinePositions[i] + new Vector3(delta.x, 0f, delta.y);
+        }
+    }
+
+    void RestoreHousesToBaseline()
+    {
+        if (arrangeWalkin == null || houseBaselinePositions == null) return;
+        for (int i = 0; i < arrangeWalkin.houses.Count && i < houseBaselinePositions.Length; i++)
+        {
+            if (i == myType || arrangeWalkin.houses[i] == null) continue;
+            arrangeWalkin.houses[i].transform.position = houseBaselinePositions[i];
+        }
+        houseBaselinePositions = null;
+    }
+
     void RequestToggle()
     {
         var transferManager = FindFirstObjectByType<TransferManager>();
@@ -113,34 +145,22 @@ public class DistanceMaintainMode : MonoBehaviour
         transferManager.RPC_SetDistanceMaintainMode(!IsActive);
     }
 
-    // The single place IsActive actually changes -- called by
-    // TransferManager.RPC_SetDistanceMaintainMode on every client (including
-    // whichever one pressed B), and locally by Disable() below.
     public void ApplyNetworkedState(bool active)
     {
         if (IsActive == active) return;
         IsActive = active;
-        if (active) myHeadPosAtModeStart = null; // fresh reference point every time this turns on
+        if (active)
+        {
+            myHeadPosAtModeStart = null;
+            CaptureHouseBaselines();
+        }
+        else
+        {
+            RestoreHousesToBaseline();
+        }
         Debug.Log($"[DistanceMaintainMode] {(IsActive ? "enabled" : "disabled")}.");
     }
 
-    // Called by LocalOptimizationRunner right before applying a Z/M optimization
-    // result -- a result should be seen with houses/circles at their true
-    // optimized target, not shifted by whatever distance-maintain state was
-    // active. Runs locally on every client as a side effect of each of them
-    // independently applying the same optimization event, so no RPC is needed.
-    //
-    // Also force-zeros the shader's _LocalOffset here, not just IsActive:
-    // Standard_WithZones.shader applies whatever _LocalOffset currently holds
-    // to Remote-zone geometry unconditionally, with no idea whether this mode
-    // is even active. IsActive going false only stops the RING (via
-    // CircleFollowAvatar, gated on IsActive) from moving -- it does nothing to
-    // the shader global itself, which otherwise keeps sitting at its last
-    // value from the PREVIOUS distance-maintain session. Confirmed live: a
-    // second optimization correctly redrew the rings at the fresh result, but
-    // the actual shader-revealed geometry was still shifted by the leftover
-    // offset from before, visibly detached from both the new rings and the
-    // rest of that house's own room.
     public void Disable()
     {
         Shader.SetGlobalVector(LocalOffsetId, Vector4.zero);
